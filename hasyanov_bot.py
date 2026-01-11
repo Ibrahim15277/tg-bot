@@ -146,7 +146,7 @@ async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 🔹 ЗАМЕНИ ЭТИ ССЫЛКИ НА СВОИ!
     channel_link = "https://t.me/hasyanov_EGE"
-    bot_link = f"https://t.me/@hasyanov_bot"
+    bot_link = f"https://t.me/hasyanov_bot"
     contact = "@ibrahimchiik"
 
     text = (
@@ -397,4 +397,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
