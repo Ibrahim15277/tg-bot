@@ -380,13 +380,12 @@ async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(query.message.chat_id, context, "Проверка отменена!")
 
 # 🚀 Запуск
-# 🚀 Запуск
 def main():
     app = Application.builder().token(TOKEN).build()
     
-    # Добавляем обработчики
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(on_action, pattern="^action_(get|check|notes)$"))
+    app.add_handler(CallbackQueryHandler(on_links, pattern="^action_links$"))  # ← ДОБАВЛЕНО
     app.add_handler(CallbackQueryHandler(on_get_selected, pattern="^action_get_"))
     app.add_handler(CallbackQueryHandler(on_check_selected, pattern="^action_check_"))
     app.add_handler(CallbackQueryHandler(on_note_selected, pattern="^action_notes_"))
@@ -394,9 +393,8 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_answer))
     
     print("✅ Бот запущен!")
-    
-    # Запускаем бота
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
+
