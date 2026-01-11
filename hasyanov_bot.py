@@ -11,7 +11,7 @@ from telegram.ext import (
 import os
 
 # 🔑 Вставь свой токен от @BotFather (через переменную окружения)
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("8203286904:AAH8pHnGacU5VqG4JIDEdqblPEIGZ7y0_gA")
 
 # 📁 Пути к папкам
 HW_DIR = "./дз/"
@@ -275,3 +275,4 @@ async def main():
 if __name__ == "__main__":
     import asyncio
     asyncio.run(main())
+
