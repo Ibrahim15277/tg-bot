@@ -48,7 +48,7 @@ FULL_OFFER = (
 )
 
 # 🔹 Номера ДЗ с доп. файлами
-HW_WITH_FOLDER = {3, 9, 10, 17, 18, 22}
+HW_WITH_FOLDER = {3, 9, 10, 17, 18, 22, 24}
 
 # 📝 ОТВЕТЫ НА ВСЕ ДЗ
 homework = {
@@ -184,8 +184,27 @@ async def send_hw_pdf(query, hw_num: int | str):
         main_filename = "7_звуки"
     else:
         main_filename = str(hw_num)
+    
     main_path = os.path.join(HW_DIR, f"дз_{main_filename}.pdf")
     if await send_pdf(query, main_path, f"📚 ДЗ №{hw_num}"):
+        # 🔥 Проверяем ZIP файл
+        zip_path = os.path.join(HW_DIR, f"файлы_{hw_num}.zip")
+        if os.path.exists(zip_path):
+            try:
+                with open(zip_path, "rb") as f:
+                    await query.message.reply_document(
+                        document=f,
+                        caption=f"📦 Дополнительные файлы (ZIP)",
+                        protect_content=True
+                    )
+            except Exception as e:
+                await query.message.reply_text(
+                    f"⚠️ Не удалось отправить ZIP: {e}",
+                    protect_content=True
+                )
+            return  # ✅ Выходим, чтобы не искать папку
+        
+        # Если ZIP нет, ищем папку (старая логика)
         if isinstance(hw_num, int) and hw_num in HW_WITH_FOLDER:
             folder_path = os.path.join(HW_DIR, f"файлы_{hw_num}")
             if os.path.exists(folder_path) and os.path.isdir(folder_path):
@@ -212,12 +231,6 @@ async def send_hw_pdf(query, hw_num: int | str):
                                 f"⚠️ Не удалось отправить {filename}: {e}",
                                 protect_content=True
                             )
-            else:
-                await query.message.reply_text(
-                    f"ℹ️ Папка 'файлы_{hw_num}' не найдена — файлы отсутствуют.",
-                    protect_content=True
-                )
-
 # 📖 Конспект
 async def send_note_pdf(query, note_num: int | str):
     if str(note_num) in ["19", "20", "21", "19_21", "1921"]:
@@ -487,6 +500,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
 
