@@ -26,6 +26,9 @@ NOTES_DIR = "./конспекты/"
 # 📁 Файл для хранения ID проверенных пользователей
 VERIFIED_USERS_FILE = "verified_users.json"
 
+# 🚫 ЧЁРНЫЙ СПИСОК (впишите ID нарушителя)
+BLOCKED_USERS = {1064932329}  # ← замените на реальный ID нарушителя
+
 # 🔹 Список номеров ДЗ
 NUMBERS = list(range(1, 7)) + ["7_изобр", "7_звуки"] + list(range(8, 19)) + ["19_21"] + list(range(22, 28))
 
@@ -130,9 +133,16 @@ verified_users = load_verified_users()
 # 🔗 Полезные ссылки
 async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
-    channel_link = "https://t.me/hasyanov_EGE"
-    bot_link = "https://t.me/hasyanov_bot"
+    channel_link = "https://t.me/hasyanov_EGE  "
+    bot_link = "https://t.me/hasyanov_bot  "
     contact = "@ibrahimchiik"
     text = (
         "📌 Вот полезные ссылки:\n\n"
@@ -141,7 +151,6 @@ async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📩 <b>Мой контакт</b>: {contact}"
     )
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]]
-    # ❗️ УБРАЛ protect_content — edit_message_text не поддерживает этот параметр!
     await query.edit_message_text(
         text=text,
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -156,14 +165,14 @@ async def send_pdf(query, file_path: str, caption: str = ""):
                 await query.message.reply_document(
                     document=f, 
                     caption=caption,
-                    protect_content=True  # ✅ Здесь можно — это reply_document
+                    protect_content=True
                 )
                 return True
         else:
             await query.message.reply_text(
                 f"❌ Файл не найден: `{file_path}`", 
                 parse_mode="Markdown",
-                protect_content=True  # ✅ Здесь можно — это reply_text
+                protect_content=True
             )
             return False
     except Exception as e:
@@ -187,7 +196,6 @@ async def send_hw_pdf(query, hw_num: int | str):
     
     main_path = os.path.join(HW_DIR, f"дз_{main_filename}.pdf")
     if await send_pdf(query, main_path, f"📚 ДЗ №{hw_num}"):
-        # 🔥 Проверяем ZIP файл
         zip_path = os.path.join(HW_DIR, f"файлы_{hw_num}.zip")
         if os.path.exists(zip_path):
             try:
@@ -202,9 +210,8 @@ async def send_hw_pdf(query, hw_num: int | str):
                     f"⚠️ Не удалось отправить ZIP: {e}",
                     protect_content=True
                 )
-            return  # ✅ Выходим, чтобы не искать папку
+            return
         
-        # Если ZIP нет, ищем папку (старая логика)
         if isinstance(hw_num, int) and hw_num in HW_WITH_FOLDER:
             folder_path = os.path.join(HW_DIR, f"файлы_{hw_num}")
             if os.path.exists(folder_path) and os.path.isdir(folder_path):
@@ -231,6 +238,7 @@ async def send_hw_pdf(query, hw_num: int | str):
                                 f"⚠️ Не удалось отправить {filename}: {e}",
                                 protect_content=True
                             )
+
 # 📖 Конспект
 async def send_note_pdf(query, note_num: int | str):
     if str(note_num) in ["19", "20", "21", "19_21", "1921"]:
@@ -255,12 +263,17 @@ async def show_main_menu(chat_id, context: ContextTypes.DEFAULT_TYPE,
         text=message_text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
-        protect_content=protect  # ✅ Здесь можно — это send_message
+        protect_content=protect
     )
 
 # 🏁 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    # 🚫 Проверка чёрного списка
+    if user_id in BLOCKED_USERS:
+        await update.message.reply_text("⛔️ Доступ ограничен", protect_content=True)
+        return
     
     # ✅ Если пользователь уже проверен — сразу показываем меню
     if user_id in verified_users:
@@ -289,6 +302,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 🎛️ Выбор действия
 async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
     keyboard = []
     for i in range(0, len(NUMBERS), 3):
@@ -305,7 +325,6 @@ async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "🔍 Какое ДЗ проверим?"
     elif query.data == "action_notes":
         text = "📝 Какой конспект нужен?"
-    # ❗️ УБРАЛ protect_content — edit_message_text не поддерживает!
     await query.edit_message_text(
         text, 
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -314,6 +333,13 @@ async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 📥 Получить ДЗ
 async def on_get_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
     if query.data.startswith("action_get_"):
         hw_num_str = query.data[len("action_get_"):]
@@ -327,6 +353,13 @@ async def on_get_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 📖 Конспекты
 async def on_note_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
     if query.data.startswith("action_notes_"):
         note_num_str = query.data[len("action_notes_"):]
@@ -340,6 +373,13 @@ async def on_note_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 🔍 Проверить ДЗ
 async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
     if query.data.startswith("action_check_"):
         hw_num_str = query.data[len("action_check_"):]
@@ -353,7 +393,6 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_id = query.from_user.id
         user_checking[user_id] = {"hw": hw_num, "task": 1}
         keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_check")]]
-        # ❗️ УБРАЛ protect_content
         await query.edit_message_text(
             f"✅ Проверим ДЗ №{hw_num_str}\n📌 Задание #1:",
             reply_markup=InlineKeyboardMarkup(keyboard)
@@ -362,6 +401,12 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ✍️ Ввод ответа на ДЗ
 async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await update.message.reply_text("⛔️ Доступ ограничен", protect_content=True)
+        return
+    
     state = user_checking.get(user_id)
     if not state:
         return
@@ -419,6 +464,11 @@ async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     message_text = update.message.text.strip()
     
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS:
+        await update.message.reply_text("⛔️ Доступ ограничен", protect_content=True)
+        return
+    
     if user_id in verified_users:
         return
     
@@ -441,12 +491,18 @@ async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         context.user_data["agreed"] = False
 
-# ❌ Отмена ввода пароля (если вдруг нужна)
+# ❌ Отмена ввода пароля
 async def on_cancel_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
     context.user_data["waiting_for_password"] = False
-    # ❗️ УБРАЛ protect_content
     await query.edit_message_text(
         "Ввод пароля отменён.",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]])
@@ -455,6 +511,13 @@ async def on_cancel_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # 🔄 Обработчик кнопки "Назад" и "Отмена"
 async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
     if query.data == "back_to_main":
         await show_main_menu(query.message.chat_id, context, "Главное меню:")
@@ -467,6 +530,13 @@ async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ✅ Обработчик принятия оферты
 async def on_accept_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user_id = query.from_user.id
+    
+    # 🔐 ПРОВЕРКА ДОСТУПА
+    if user_id in BLOCKED_USERS or user_id not in verified_users:
+        await query.answer("⛔️ Доступ ограничен", show_alert=True)
+        return
+    
     await query.answer()
     await query.message.reply_text(
         "Я даю полное согласие со всеми условиями оферты Исполнителя (Хасянова Ибрахима Галимовича).",
@@ -500,7 +570,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
