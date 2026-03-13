@@ -131,8 +131,8 @@ verified_users = load_verified_users()
 async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    channel_link = "https://t.me/hasyanov_EGE  "
-    bot_link = "https://t.me/hasyanov_bot  "
+    channel_link = "https://t.me/hasyanov_EGE    "
+    bot_link = "https://t.me/hasyanov_bot    "
     contact = "@ibrahimchiik"
     text = (
         "📌 Вот полезные ссылки:\n\n"
