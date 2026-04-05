@@ -359,40 +359,52 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-# ✍️ Ввод ответа на ДЗ
+# ✍️ Ввод ответа на ДЗ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state = user_checking.get(user_id)
     if not state:
         return
+    
     hw_num = state["hw"]
     task_num = state["task"]
     user_input = update.message.text.strip()
+    
+    # Нормализация ключа ДЗ
     if isinstance(hw_num, str) and (hw_num == "1921" or hw_num == "19_21"):
         hw_key = "19_21"
     else:
         hw_key = hw_num
+        
     if hw_key not in homework:
         await update.message.reply_text(f"❌ ДЗ №{hw_key} не найдено в базе", protect_content=True)
         return
+        
     correct_answers = homework[hw_key]
     if task_num > len(correct_answers):
         await update.message.reply_text(f"❌ Задание №{task_num} не найдено", protect_content=True)
         return
+        
     correct_ans = str(correct_answers[task_num - 1]).strip()
+    
     def normalize(s: str) -> str:
         parts = s.lower().split()
         return " ".join(parts)
+        
     user_norm = normalize(user_input)
     correct_norm = normalize(correct_ans)
     is_correct = user_norm == correct_norm
+    
+    # Ответы на отдельные задачи оставляем защищенными (чтобы не спамили ответами)
     if is_correct:
         await update.message.reply_text("✅ Верно!", protect_content=True)
     else:
         await update.message.reply_text("❌ Неверно.", protect_content=True)
+        
     if "results" not in user_checking[user_id]:
         user_checking[user_id]["results"] = []
     user_checking[user_id]["results"].append(is_correct)
+    
     next_task = task_num + 1
     if next_task <= len(correct_answers):
         user_checking[user_id]["task"] = next_task
@@ -401,19 +413,25 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = user_checking[user_id]["results"]
         correct_count = sum(results)
         total = len(results)
+        
         if correct_count == total:
             phrase = "Ты молодец!"
         else:
             phrase = "Тренеруйся. Есть ошибки."
+            
         summary = f"✅ ДЗ_{hw_key} решено: {correct_count}/{total}\n«{phrase}»"
-        await update.message.reply_text(summary, protect_content=True)
+        
+        # 🔥 ВАЖНО: Убрали protect_content=True, чтобы можно было сделать скриншот или переслать!
+        await update.message.reply_text(summary) 
+        
+        # 🔥 И инструкцию тоже делаем открытой
         await update.message.reply_text(
-            "📤 Скопируй это сообщение и пришли мне в личку!\nЯ проверю твой прогресс 😊",
-            protect_content=True
+            "📤 Перешли сообщение с результатом мне в личку!\nЯ оценю твой прогресс 😊"
         )
+        
         del user_checking[user_id]
+        # Меню можно оставить как есть
         await show_main_menu(update.effective_chat.id, context, "🎉 Проверка завершена! Что дальше?")
-
 # ✍️ Проверка введённого пароля
 async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
