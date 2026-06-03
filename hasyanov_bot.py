@@ -16,7 +16,7 @@ TOKEN = os.getenv("TOKEN")
 if not TOKEN:
     raise ValueError("❌ Токен не найден! Убедись, что переменная окружения TOKEN установлена.")
 
-# 🔐 ПАРОЛЬ ДЛЯ ДОСТУПА (ОБЯЗАТЕЛЬНО ИЗМЕНИТЕ!)
+# 🔐 ПАРОЛЬ ДЛЯ ДОСТУПА
 BOT_PASSWORD = "student_has"  # ← ЗАМЕНИТЕ НА СВОЙ!
 
 # 📁 Пути к папкам
@@ -113,7 +113,7 @@ def normalize(s: str) -> str:
     return " ".join(s.lower().split())
 
 
-# 💾 Функции для работы с проверенными пользователями
+# 💾 Работа с проверенными пользователями
 def load_verified_users():
     if os.path.exists(VERIFIED_USERS_FILE):
         try:
@@ -136,6 +136,32 @@ def save_verified_users(verified_set):
 verified_users = load_verified_users()
 
 
+# 🔁 Показать кнопки с ошибками для повтора
+async def show_retry_keyboard(message, hw_key, results):
+    wrong_tasks = [i + 1 for i, ok in enumerate(results) if not ok]
+    if not wrong_tasks:
+        return False
+    keyboard = []
+    row = []
+    for t_num in wrong_tasks:
+        row.append(InlineKeyboardButton(
+            f"❌ №{t_num}",
+            callback_data=f"retry_{hw_key}_{t_num}"
+        ))
+        if len(row) == 4:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")])
+    await message.reply_text(
+        "🔁 Хочешь переделать конкретное задание? Нажми на номер:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        protect_content=True
+    )
+    return True
+
+
 # 🔗 Полезные ссылки
 async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -150,11 +176,7 @@ async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📩 <b>Мой контакт</b>: {contact}"
     )
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]]
-    await query.edit_message_text(
-        text=text,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
 # 📥 Отправка PDF
@@ -162,25 +184,14 @@ async def send_pdf(query, file_path: str, caption: str = ""):
     try:
         if os.path.exists(file_path):
             with open(file_path, "rb") as f:
-                await query.message.reply_document(
-                    document=f,
-                    caption=caption,
-                    protect_content=True
-                )
+                await query.message.reply_document(document=f, caption=caption, protect_content=True)
             return True
         else:
-            await query.message.reply_text(
-                f"❌ Файл не найден: `{file_path}`",
-                parse_mode="Markdown",
-                protect_content=True
-            )
+            await query.message.reply_text(f"❌ Файл не найден: `{file_path}`", parse_mode="Markdown", protect_content=True)
             return False
     except Exception as e:
         logger.error(f"Ошибка при отправке PDF: {e}")
-        await query.message.reply_text(
-            f"❌ Ошибка при отправке файла: {e}",
-            protect_content=True
-        )
+        await query.message.reply_text(f"❌ Ошибка при отправке файла: {e}", protect_content=True)
         return False
 
 
@@ -201,16 +212,9 @@ async def send_hw_pdf(query, hw_num):
         if os.path.exists(zip_path):
             try:
                 with open(zip_path, "rb") as f:
-                    await query.message.reply_document(
-                        document=f,
-                        caption="📦 Дополнительные файлы (ZIP)",
-                        protect_content=True
-                    )
+                    await query.message.reply_document(document=f, caption="📦 Дополнительные файлы (ZIP)", protect_content=True)
             except Exception as e:
-                await query.message.reply_text(
-                    f"⚠️ Не удалось отправить ZIP: {e}",
-                    protect_content=True
-                )
+                await query.message.reply_text(f"⚠️ Не удалось отправить ZIP: {e}", protect_content=True)
             return
 
         if isinstance(hw_num, int) and hw_num in HW_WITH_FOLDER:
@@ -229,16 +233,9 @@ async def send_hw_pdf(query, hw_num):
                     if os.path.isfile(file_path):
                         try:
                             with open(file_path, "rb") as f:
-                                await query.message.reply_document(
-                                    document=f,
-                                    caption=f"📎 {filename}",
-                                    protect_content=True
-                                )
+                                await query.message.reply_document(document=f, caption=f"📎 {filename}", protect_content=True)
                         except Exception as e:
-                            await query.message.reply_text(
-                                f"⚠️ Не удалось отправить {filename}: {e}",
-                                protect_content=True
-                            )
+                            await query.message.reply_text(f"⚠️ Не удалось отправить {filename}: {e}", protect_content=True)
 
 
 # 📖 Конспект
@@ -270,61 +267,22 @@ async def show_main_menu(chat_id, context: ContextTypes.DEFAULT_TYPE,
     )
 
 
-# 🔁 Вспомогательная функция: показать кнопки с ошибками
-async def show_retry_keyboard(message, hw_key, results):
-    wrong_tasks = [i + 1 for i, ok in enumerate(results) if not ok]
-    if not wrong_tasks:
-        return False
-
-    keyboard = []
-    row = []
-    for t_num in wrong_tasks:
-        row.append(InlineKeyboardButton(
-            f"❌ №{t_num}",
-            callback_data=f"retry_{hw_key}_{t_num}"
-        ))
-        if len(row) == 4:
-            keyboard.append(row)
-            row = []
-    if row:
-        keyboard.append(row)
-    keyboard.append([InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")])
-
-    await message.reply_text(
-        "🔁 Хочешь переделать конкретное задание? Нажми на номер:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        protect_content=True
-    )
-    return True
-
-
 # 🏁 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-
     if user_id in verified_users:
         context.user_data["agreed"] = True
         context.user_data["password_verified"] = True
         await show_main_menu(update.effective_chat.id, context)
         return
-
     if context.user_data.get("agreed", False) and not context.user_data.get("password_verified", False):
-        await update.message.reply_text(
-            "🔐 Введите пароль, полученный от преподавателя:",
-            protect_content=True
-        )
+        await update.message.reply_text("🔐 Введите пароль, полученный от преподавателя:", protect_content=True)
         return
-
     keyboard = [[InlineKeyboardButton("✅ Принять оферту", callback_data="accept_offer")]]
-    await update.message.reply_text(
-        FULL_OFFER,
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML",
-        protect_content=True
-    )
+    await update.message.reply_text(FULL_OFFER, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", protect_content=True)
 
 
-# 🎛️ Выбор действия
+# 🎛️ Выбор действия (получить/проверить/конспекты)
 async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -374,42 +332,109 @@ async def on_note_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(query.message.chat_id, context, f"📝 Конспект №{note_num_str} отправлен! Что дальше?")
 
 
-# 🔍 Проверить ДЗ — выбор номера
+# 🔍 Проверить ДЗ — выбор номера ДЗ → показываем выбор задания
 async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if query.data.startswith("action_check_"):
-        hw_num_str = query.data[len("action_check_"):]
-        if hw_num_str in ["1921", "19_21"]:
-            hw_num = "19_21"
-        else:
-            try:
-                hw_num = int(hw_num_str)
-            except ValueError:
-                hw_num = hw_num_str
-        user_id = query.from_user.id
-        # Инициализируем состояние: results сразу заполняем False на все задания
-        total = len(homework.get(hw_num, []))
-        user_checking[user_id] = {
-            "hw": hw_num,
-            "task": 1,
-            "results": [False] * total,  # ← фиксированный размер с самого начала
-            "answered": set(),            # ← какие задания уже отвечены
-        }
-        keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_check")]]
+    if not query.data.startswith("action_check_"):
+        return
+
+    hw_num_str = query.data[len("action_check_"):]
+    if hw_num_str in ["1921", "19_21"]:
+        hw_key = "19_21"
+    else:
+        try:
+            hw_key = int(hw_num_str)
+        except ValueError:
+            hw_key = hw_num_str
+
+    total = len(homework.get(hw_key, []))
+    if total == 0:
+        await query.edit_message_text(f"❌ ДЗ №{hw_num_str} не найдено в базе.")
+        return
+
+    # 🆕 Показываем выбор: все по порядку или конкретное задание
+    keyboard = []
+
+    # Кнопка "Все по порядку"
+    keyboard.append([InlineKeyboardButton("📋 Все по порядку (с №1)", callback_data=f"chktask_{hw_key}_all")])
+
+    # Кнопки с номерами заданий — по 5 в ряд
+    row = []
+    for t_num in range(1, total + 1):
+        row.append(InlineKeyboardButton(str(t_num), callback_data=f"chktask_{hw_key}_{t_num}"))
+        if len(row) == 5:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+
+    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")])
+
+    await query.edit_message_text(
+        f"🔍 ДЗ №{hw_num_str} — выбери с какого задания начать:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# 🆕 Выбор конкретного задания для начала проверки
+async def on_check_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # Формат: chktask_{hw_key}_{task_num или all}
+    without_prefix = query.data[len("chktask_"):]
+    last_underscore = without_prefix.rfind("_")
+    hw_key_str = without_prefix[:last_underscore]
+    task_num_str = without_prefix[last_underscore + 1:]
+
+    try:
+        hw_key = int(hw_key_str)
+    except ValueError:
+        hw_key = hw_key_str
+
+    total = len(homework.get(hw_key, []))
+
+    # Определяем стартовое задание
+    if task_num_str == "all":
+        start_task = 1
+        mode_single = False  # проверяем все по порядку
+    else:
+        try:
+            start_task = int(task_num_str)
+        except ValueError:
+            await query.edit_message_text("❌ Ошибка: неверный номер задания.")
+            return
+        mode_single = True  # проверяем только одно конкретное задание
+
+    user_id = query.from_user.id
+    user_checking[user_id] = {
+        "hw": hw_key,
+        "task": start_task,
+        "results": [False] * total,
+        "answered": set(),
+        "single_task": mode_single,   # 🆕 режим одного задания
+        "single_task_num": start_task if mode_single else None,
+    }
+
+    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_check")]]
+    if mode_single:
         await query.edit_message_text(
-            f"✅ Проверим ДЗ №{hw_num_str}\n📌 Задание #1:",
+            f"🔍 ДЗ №{hw_key_str}\n📌 Задание #{start_task} из {total}:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    else:
+        await query.edit_message_text(
+            f"✅ Проверим ДЗ №{hw_key_str}\n📌 Задание #1 из {total}:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
 
-# 🔁 Повтор конкретного задания по кнопке
+# 🔁 Повтор конкретного задания по кнопке (после итога)
 async def on_retry_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Формат: retry_{hw_key}_{task_num}
-    # hw_key может содержать "_" (7_изобр, 19_21), поэтому task_num — последний сегмент
     without_prefix = query.data[len("retry_"):]
     last_underscore = without_prefix.rfind("_")
     if last_underscore == -1:
@@ -430,10 +455,9 @@ async def on_retry_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     user_id = query.from_user.id
+    total = len(homework.get(hw_key, []))
 
-    # Если состояние потеряно (перезапуск бота) — восстанавливаем
     if user_id not in user_checking:
-        total = len(homework.get(hw_key, []))
         user_checking[user_id] = {
             "hw": hw_key,
             "task": task_num,
@@ -463,7 +487,6 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_num = state["task"]
     user_input = update.message.text.strip()
 
-    # Нормализация ключа ДЗ
     if isinstance(hw_num, str) and hw_num in ("1921", "19_21"):
         hw_key = "19_21"
     else:
@@ -474,7 +497,9 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     correct_answers = homework[hw_key]
-    if task_num < 1 or task_num > len(correct_answers):
+    total = len(correct_answers)
+
+    if task_num < 1 or task_num > total:
         await update.message.reply_text(f"❌ Задание №{task_num} не найдено", protect_content=True)
         return
 
@@ -487,59 +512,58 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("❌ Неверно.", protect_content=True)
 
-    # ✅ ВСЕГДА обновляем результат по индексу (не append!)
-    # results уже инициализирован с нужным размером в on_check_selected
+    # Обновляем результат по индексу (не append!)
     idx = task_num - 1
     if idx < len(state["results"]):
         state["results"][idx] = is_correct
-
-    # Отмечаем задание как отвеченное
     if "answered" not in state:
         state["answered"] = set()
     state["answered"].add(task_num)
 
-    # ── РЕЖИМ ПОВТОРА ОДНОГО ЗАДАНИЯ ──────────────────────────────────────────
+    # ── РЕЖИМ RETRY (после итога нажал на ❌ №X) ──────────────────────────────
     if state.get("retry_mode"):
         state.pop("retry_mode", None)
-
         results = state["results"]
         correct_count = sum(results)
-        total = len(results)
-
-        await update.message.reply_text(
-            f"📊 Текущий результат: {correct_count}/{total}",
-            protect_content=True
-        )
-
+        await update.message.reply_text(f"📊 Текущий результат: {correct_count}/{total}", protect_content=True)
         has_errors = await show_retry_keyboard(update.message, hw_key, results)
         if not has_errors:
             del user_checking[user_id]
             await show_main_menu(update.effective_chat.id, context, "🎉 Все задания верны! Что дальше?")
-        return  # ← обязательный выход из функции
+        return
 
-    # ── ОБЫЧНЫЙ РЕЖИМ (по порядку) ────────────────────────────────────────────
+    # ── РЕЖИМ ОДНОГО ЗАДАНИЯ (выбрал конкретный номер в начале) ───────────────
+    if state.get("single_task"):
+        del user_checking[user_id]
+        keyboard = [
+            [InlineKeyboardButton("🔍 Проверить ещё задание", callback_data="action_check")],
+            [InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")],
+        ]
+        await update.message.reply_text(
+            "Хочешь проверить ещё одно задание или вернуться в меню?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            protect_content=True
+        )
+        return
+
+    # ── ОБЫЧНЫЙ РЕЖИМ (все по порядку) ────────────────────────────────────────
     next_task = task_num + 1
-    if next_task <= len(correct_answers):
+    if next_task <= total:
         state["task"] = next_task
         keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_check")]]
         await update.message.reply_text(
-            f"📌 Задание #{next_task}:",
+            f"📌 Задание #{next_task} из {total}:",
             reply_markup=InlineKeyboardMarkup(keyboard),
             protect_content=True
         )
     else:
-        # Все задания пройдены — показываем итог
+        # Все задания пройдены — итог
         results = state["results"]
         correct_count = sum(results)
-        total = len(results)
-
         phrase = "Ты молодец!" if correct_count == total else "Тренируйся. Есть ошибки."
         summary = f"✅ ДЗ_{hw_key} решено: {correct_count}/{total}\n«{phrase}»"
-
         await update.message.reply_text(summary)
-        await update.message.reply_text(
-            "📤 Перешли сообщение с результатом мне в личку!\nЯ оценю твой прогресс 😊"
-        )
+        await update.message.reply_text("📤 Перешли сообщение с результатом мне в личку!\nЯ оценю твой прогресс 😊")
 
         has_errors = await show_retry_keyboard(update.message, hw_key, results)
         if not has_errors:
@@ -547,32 +571,25 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_main_menu(update.effective_chat.id, context, "🎉 Проверка завершена! Что дальше?")
 
 
-# ✍️ Проверка введённого пароля
+# ✍️ Проверка пароля
 async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     message_text = update.message.text.strip()
-
     if user_id in verified_users:
         return
-
     if not context.user_data.get("agreed", False) or context.user_data.get("password_verified", False):
         return
-
     if message_text == BOT_PASSWORD:
         context.user_data["password_verified"] = True
         verified_users.add(user_id)
         save_verified_users(verified_users)
-        await update.message.reply_text(
-            "✅ Пароль верен! Добро пожаловать!",
-            protect_content=True
-        )
+        await update.message.reply_text("✅ Пароль верен! Добро пожаловать!", protect_content=True)
         await show_main_menu(update.effective_chat.id, context)
     else:
         await update.message.reply_text(
             "❌ Неверный пароль! Попробуйте ещё раз или обратитесь к преподавателю.",
             protect_content=True
         )
-        # Не сбрасываем agreed — пусть попробует снова без повторного принятия оферты
 
 
 # ❌ Отмена ввода пароля
@@ -582,13 +599,11 @@ async def on_cancel_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["waiting_for_password"] = False
     await query.edit_message_text(
         "Ввод пароля отменён.",
-        reply_markup=InlineKeyboardMarkup(
-            [[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]]
-        )
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]])
     )
 
 
-# 🔄 Обработчик кнопки "Назад" и "Отмена"
+# 🔄 Назад / Отмена
 async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -601,7 +616,7 @@ async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(query.message.chat_id, context, "Проверка отменена!")
 
 
-# ✅ Обработчик принятия оферты
+# ✅ Принятие оферты
 async def on_accept_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -610,10 +625,7 @@ async def on_accept_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         protect_content=True
     )
     context.user_data["agreed"] = True
-    await query.message.reply_text(
-        "🔐 Введите пароль, полученный от преподавателя:",
-        protect_content=True
-    )
+    await query.message.reply_text("🔐 Введите пароль, полученный от преподавателя:", protect_content=True)
 
 
 # 🚀 Запуск
@@ -627,6 +639,7 @@ def main():
     app.add_handler(CallbackQueryHandler(on_get_selected, pattern="^action_get_"))
     app.add_handler(CallbackQueryHandler(on_check_selected, pattern="^action_check_"))
     app.add_handler(CallbackQueryHandler(on_note_selected, pattern="^action_notes_"))
+    app.add_handler(CallbackQueryHandler(on_check_task_start, pattern=r"^chktask_"))   # 🆕
     app.add_handler(CallbackQueryHandler(on_retry_task, pattern=r"^retry_"))
     app.add_handler(CallbackQueryHandler(on_back_button, pattern="^(back_to_main|cancel_check)$"))
     app.add_handler(CallbackQueryHandler(on_cancel_password, pattern="^cancel_password$"))
