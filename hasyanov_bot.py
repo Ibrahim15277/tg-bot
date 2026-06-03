@@ -66,17 +66,17 @@ homework = {
     11: ["512", "256", "12", "22", "896", "7", "200", "129", "8", "9"],
     12: ["28", "701", "622", "120", "239", "544", "618", "254", "442", "126"],
     13: ["14", "254", "2", "15", "34160160", "2", "192", "1195255254", "349526", "378"],
-    14: ["43","15", "220", "2029", "26", "5718", "27", "250", "224", "224"],
+    14: ["43", "15", "220", "2029", "26", "5718", "27", "250", "224", "224"],
     15: ["89", "25", "17", "54", "54", "78", "19", "41", "3", "190"],
     16: ["12114", "4045", "8102", "77309406959", "67", "750", "12487", "1078", "66048", "38043606640000"],
-    17: ["1591 9233", "2089 99343", "720 87094", "2890 276074548", 
-         "8631 199187", "99999 1985089", "2627 504410", "104 191", 
+    17: ["1591 9233", "2089 99343", "720 87094", "2890 276074548",
+         "8631 199187", "99999 1985089", "2627 504410", "104 191",
          "249933", "77 8664"],
-    18: ["2071 649", "2292 524", "2407 1101", "2662 364", 
-         "2400 852", "2538 630", "2671 419", "1271 754", 
+    18: ["2071 649", "2292 524", "2407 1101", "2662 364",
+         "2400 852", "2538 630", "2671 419", "1271 754",
          "2358 877", "3154 887"],
-    "19_21": ["27 24 26 23", "118 113 117 112", "45 40 44 39 43", "8 7 20 19", 
-              "28 48 54 47", "17 11 23 6", "13 10 19 6", "28 25 52 33", 
+    "19_21": ["27 24 26 23", "118 113 117 112", "45 40 44 39 43", "8 7 20 19",
+              "28 48 54 47", "17 11 23 6", "13 10 19 6", "28 25 52 33",
               "40 10 39 7", "54 98 106 97"],
     22: ["1375", "36", "14", "6", "18", "32", "3", "7", "7", "158"],
     23: ["133", "200", "200", "133280", "12", "301", "22", "273", "6090", "12420"],
@@ -107,15 +107,22 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# 🔧 Нормализация ответа
+def normalize(s: str) -> str:
+    return " ".join(s.lower().split())
+
+
 # 💾 Функции для работы с проверенными пользователями
 def load_verified_users():
     if os.path.exists(VERIFIED_USERS_FILE):
         try:
             with open(VERIFIED_USERS_FILE, "r", encoding="utf-8") as f:
                 return set(json.load(f))
-        except:
+        except (json.JSONDecodeError, ValueError):
             return set()
     return set()
+
 
 def save_verified_users(verified_set):
     try:
@@ -124,15 +131,17 @@ def save_verified_users(verified_set):
     except Exception as e:
         logger.error(f"Ошибка при сохранении проверенных пользователей: {e}")
 
+
 # 🌍 Глобальное множество проверенных пользователей
 verified_users = load_verified_users()
+
 
 # 🔗 Полезные ссылки
 async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    channel_link = "https://t.me/hasyanov_EGE    "
-    bot_link = "https://t.me/hasyanov_bot    "
+    channel_link = "https://t.me/hasyanov_EGE"
+    bot_link = "https://t.me/hasyanov_bot"
     contact = "@hassyanov"
     text = (
         "📌 Вот полезные ссылки:\n\n"
@@ -141,12 +150,12 @@ async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"📩 <b>Мой контакт</b>: {contact}"
     )
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")]]
-    # ❗️ УБРАЛ protect_content — edit_message_text не поддерживает этот параметр!
     await query.edit_message_text(
         text=text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
+
 
 # 📥 Отправка PDF
 async def send_pdf(query, file_path: str, caption: str = ""):
@@ -154,16 +163,16 @@ async def send_pdf(query, file_path: str, caption: str = ""):
         if os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 await query.message.reply_document(
-                    document=f, 
+                    document=f,
                     caption=caption,
-                    protect_content=True  # ✅ Здесь можно — это reply_document
+                    protect_content=True
                 )
-                return True
+            return True
         else:
             await query.message.reply_text(
-                f"❌ Файл не найден: `{file_path}`", 
+                f"❌ Файл не найден: `{file_path}`",
                 parse_mode="Markdown",
-                protect_content=True  # ✅ Здесь можно — это reply_text
+                protect_content=True
             )
             return False
     except Exception as e:
@@ -174,8 +183,9 @@ async def send_pdf(query, file_path: str, caption: str = ""):
         )
         return False
 
+
 # 📥 Отправка ДЗ + доп. файлы
-async def send_hw_pdf(query, hw_num: int | str):
+async def send_hw_pdf(query, hw_num):
     if str(hw_num) in ["19", "20", "21", "19_21", "1921"]:
         main_filename = "19_21"
     elif str(hw_num) == "7_изобр":
@@ -184,17 +194,16 @@ async def send_hw_pdf(query, hw_num: int | str):
         main_filename = "7_звуки"
     else:
         main_filename = str(hw_num)
-    
+
     main_path = os.path.join(HW_DIR, f"дз_{main_filename}.pdf")
     if await send_pdf(query, main_path, f"📚 ДЗ №{hw_num}"):
-        # 🔥 Проверяем ZIP файл
         zip_path = os.path.join(HW_DIR, f"файлы_{hw_num}.zip")
         if os.path.exists(zip_path):
             try:
                 with open(zip_path, "rb") as f:
                     await query.message.reply_document(
                         document=f,
-                        caption=f"📦 Дополнительные файлы (ZIP)",
+                        caption="📦 Дополнительные файлы (ZIP)",
                         protect_content=True
                     )
             except Exception as e:
@@ -202,17 +211,16 @@ async def send_hw_pdf(query, hw_num: int | str):
                     f"⚠️ Не удалось отправить ZIP: {e}",
                     protect_content=True
                 )
-            return  # ✅ Выходим, чтобы не искать папку
-        
-        # Если ZIP нет, ищем папку (старая логика)
+            return
+
         if isinstance(hw_num, int) and hw_num in HW_WITH_FOLDER:
             folder_path = os.path.join(HW_DIR, f"файлы_{hw_num}")
             if os.path.exists(folder_path) and os.path.isdir(folder_path):
                 files = sorted(
                     os.listdir(folder_path),
                     key=lambda x: (
-                        int(x.split('_')[1].split('.')[0]) 
-                        if '_' in x and x.split('_')[1].split('.')[0].isdigit() 
+                        int(x.split('_')[1].split('.')[0])
+                        if '_' in x and x.split('_')[1].split('.')[0].isdigit()
                         else 0
                     )
                 )
@@ -231,8 +239,10 @@ async def send_hw_pdf(query, hw_num: int | str):
                                 f"⚠️ Не удалось отправить {filename}: {e}",
                                 protect_content=True
                             )
+
+
 # 📖 Конспект
-async def send_note_pdf(query, note_num: int | str):
+async def send_note_pdf(query, note_num):
     if str(note_num) in ["19", "20", "21", "19_21", "1921"]:
         filename = "19_21"
     else:
@@ -240,10 +250,11 @@ async def send_note_pdf(query, note_num: int | str):
     note_path = os.path.join(NOTES_DIR, f"Конспект_{filename}.pdf")
     await send_pdf(query, note_path, f"📝 Конспект №{filename}")
 
+
 # 🏁 Главное меню
-async def show_main_menu(chat_id, context: ContextTypes.DEFAULT_TYPE, 
-                        message_text: str = "👋 Чем займёмся сегодня?", 
-                        protect: bool = True):
+async def show_main_menu(chat_id, context: ContextTypes.DEFAULT_TYPE,
+                         message_text: str = "👋 Чем займёмся сегодня?",
+                         protect: bool = True):
     keyboard = [
         [InlineKeyboardButton("📚 Получить ДЗ", callback_data="action_get")],
         [InlineKeyboardButton("🔍 Проверить ДЗ", callback_data="action_check")],
@@ -255,21 +266,48 @@ async def show_main_menu(chat_id, context: ContextTypes.DEFAULT_TYPE,
         text=message_text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
-        protect_content=protect  # ✅ Здесь можно — это send_message
+        protect_content=protect
     )
+
+
+# 🔁 Вспомогательная функция: показать кнопки с ошибками
+async def show_retry_keyboard(message, hw_key, results):
+    wrong_tasks = [i + 1 for i, ok in enumerate(results) if not ok]
+    if not wrong_tasks:
+        return False
+
+    keyboard = []
+    row = []
+    for t_num in wrong_tasks:
+        row.append(InlineKeyboardButton(
+            f"❌ №{t_num}",
+            callback_data=f"retry_{hw_key}_{t_num}"
+        ))
+        if len(row) == 4:
+            keyboard.append(row)
+            row = []
+    if row:
+        keyboard.append(row)
+    keyboard.append([InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")])
+
+    await message.reply_text(
+        "🔁 Хочешь переделать конкретное задание? Нажми на номер:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        protect_content=True
+    )
+    return True
+
 
 # 🏁 /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    
-    # ✅ Если пользователь уже проверен — сразу показываем меню
+
     if user_id in verified_users:
         context.user_data["agreed"] = True
         context.user_data["password_verified"] = True
         await show_main_menu(update.effective_chat.id, context)
         return
-    
-    # Если оферта принята, но пароль ещё не введён — ждём текст
+
     if context.user_data.get("agreed", False) and not context.user_data.get("password_verified", False):
         await update.message.reply_text(
             "🔐 Введите пароль, полученный от преподавателя:",
@@ -277,7 +315,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Если оферта ещё не принята — показываем её
     keyboard = [[InlineKeyboardButton("✅ Принять оферту", callback_data="accept_offer")]]
     await update.message.reply_text(
         FULL_OFFER,
@@ -285,6 +322,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="HTML",
         protect_content=True
     )
+
 
 # 🎛️ Выбор действия
 async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -305,11 +343,8 @@ async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = "🔍 Какое ДЗ проверим?"
     elif query.data == "action_notes":
         text = "📝 Какой конспект нужен?"
-    # ❗️ УБРАЛ protect_content — edit_message_text не поддерживает!
-    await query.edit_message_text(
-        text, 
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
 
 # 📥 Получить ДЗ
 async def on_get_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -324,6 +359,7 @@ async def on_get_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_hw_pdf(query, hw_num)
         await show_main_menu(query.message.chat_id, context, f"📚 ДЗ №{hw_num_str} отправлено! Что дальше?")
 
+
 # 📖 Конспекты
 async def on_note_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -337,7 +373,8 @@ async def on_note_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_note_pdf(query, note_num)
         await show_main_menu(query.message.chat_id, context, f"📝 Конспект №{note_num_str} отправлен! Что дальше?")
 
-# 🔍 Проверить ДЗ
+
+# 🔍 Проверить ДЗ — выбор номера
 async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -351,98 +388,176 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except ValueError:
                 hw_num = hw_num_str
         user_id = query.from_user.id
-        user_checking[user_id] = {"hw": hw_num, "task": 1}
+        # Инициализируем состояние: results сразу заполняем False на все задания
+        total = len(homework.get(hw_num, []))
+        user_checking[user_id] = {
+            "hw": hw_num,
+            "task": 1,
+            "results": [False] * total,  # ← фиксированный размер с самого начала
+            "answered": set(),            # ← какие задания уже отвечены
+        }
         keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_check")]]
-        # ❗️ УБРАЛ protect_content
         await query.edit_message_text(
             f"✅ Проверим ДЗ №{hw_num_str}\n📌 Задание #1:",
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-# ✍️ Ввод ответа на ДЗ (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+
+# 🔁 Повтор конкретного задания по кнопке
+async def on_retry_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    # Формат: retry_{hw_key}_{task_num}
+    # hw_key может содержать "_" (7_изобр, 19_21), поэтому task_num — последний сегмент
+    without_prefix = query.data[len("retry_"):]
+    last_underscore = without_prefix.rfind("_")
+    if last_underscore == -1:
+        return
+
+    hw_key_str = without_prefix[:last_underscore]
+    task_num_str = without_prefix[last_underscore + 1:]
+
+    try:
+        hw_key = int(hw_key_str)
+    except ValueError:
+        hw_key = hw_key_str
+
+    try:
+        task_num = int(task_num_str)
+    except ValueError:
+        await query.edit_message_text("❌ Ошибка: неверный номер задания.")
+        return
+
+    user_id = query.from_user.id
+
+    # Если состояние потеряно (перезапуск бота) — восстанавливаем
+    if user_id not in user_checking:
+        total = len(homework.get(hw_key, []))
+        user_checking[user_id] = {
+            "hw": hw_key,
+            "task": task_num,
+            "results": [False] * total,
+            "answered": set(),
+            "retry_mode": True,
+        }
+    else:
+        user_checking[user_id]["task"] = task_num
+        user_checking[user_id]["retry_mode"] = True
+
+    keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_check")]]
+    await query.edit_message_text(
+        f"📌 Введи ответ на задание #{task_num} (ДЗ №{hw_key_str}):",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# ✍️ Ввод ответа на ДЗ
 async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state = user_checking.get(user_id)
     if not state:
         return
-    
+
     hw_num = state["hw"]
     task_num = state["task"]
     user_input = update.message.text.strip()
-    
+
     # Нормализация ключа ДЗ
-    if isinstance(hw_num, str) and (hw_num == "1921" or hw_num == "19_21"):
+    if isinstance(hw_num, str) and hw_num in ("1921", "19_21"):
         hw_key = "19_21"
     else:
         hw_key = hw_num
-        
+
     if hw_key not in homework:
         await update.message.reply_text(f"❌ ДЗ №{hw_key} не найдено в базе", protect_content=True)
         return
-        
+
     correct_answers = homework[hw_key]
-    if task_num > len(correct_answers):
+    if task_num < 1 or task_num > len(correct_answers):
         await update.message.reply_text(f"❌ Задание №{task_num} не найдено", protect_content=True)
         return
-        
+
     correct_ans = str(correct_answers[task_num - 1]).strip()
-    
-    def normalize(s: str) -> str:
-        parts = s.lower().split()
-        return " ".join(parts)
-        
-    user_norm = normalize(user_input)
-    correct_norm = normalize(correct_ans)
-    is_correct = user_norm == correct_norm
-    
-    # Ответы на отдельные задачи оставляем защищенными (чтобы не спамили ответами)
+    is_correct = normalize(user_input) == normalize(correct_ans)
+
+    # Сообщение о результате текущего ответа
     if is_correct:
         await update.message.reply_text("✅ Верно!", protect_content=True)
     else:
         await update.message.reply_text("❌ Неверно.", protect_content=True)
-        
-    if "results" not in user_checking[user_id]:
-        user_checking[user_id]["results"] = []
-    user_checking[user_id]["results"].append(is_correct)
-    
-    next_task = task_num + 1
-    if next_task <= len(correct_answers):
-        user_checking[user_id]["task"] = next_task
-        await update.message.reply_text(f"📌 Задание #{next_task}:", protect_content=True)
-    else:
-        results = user_checking[user_id]["results"]
+
+    # ✅ ВСЕГДА обновляем результат по индексу (не append!)
+    # results уже инициализирован с нужным размером в on_check_selected
+    idx = task_num - 1
+    if idx < len(state["results"]):
+        state["results"][idx] = is_correct
+
+    # Отмечаем задание как отвеченное
+    if "answered" not in state:
+        state["answered"] = set()
+    state["answered"].add(task_num)
+
+    # ── РЕЖИМ ПОВТОРА ОДНОГО ЗАДАНИЯ ──────────────────────────────────────────
+    if state.get("retry_mode"):
+        state.pop("retry_mode", None)
+
+        results = state["results"]
         correct_count = sum(results)
         total = len(results)
-        
-        if correct_count == total:
-            phrase = "Ты молодец!"
-        else:
-            phrase = "Тренеруйся. Есть ошибки."
-            
+
+        await update.message.reply_text(
+            f"📊 Текущий результат: {correct_count}/{total}",
+            protect_content=True
+        )
+
+        has_errors = await show_retry_keyboard(update.message, hw_key, results)
+        if not has_errors:
+            del user_checking[user_id]
+            await show_main_menu(update.effective_chat.id, context, "🎉 Все задания верны! Что дальше?")
+        return  # ← обязательный выход из функции
+
+    # ── ОБЫЧНЫЙ РЕЖИМ (по порядку) ────────────────────────────────────────────
+    next_task = task_num + 1
+    if next_task <= len(correct_answers):
+        state["task"] = next_task
+        keyboard = [[InlineKeyboardButton("❌ Отмена", callback_data="cancel_check")]]
+        await update.message.reply_text(
+            f"📌 Задание #{next_task}:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            protect_content=True
+        )
+    else:
+        # Все задания пройдены — показываем итог
+        results = state["results"]
+        correct_count = sum(results)
+        total = len(results)
+
+        phrase = "Ты молодец!" if correct_count == total else "Тренируйся. Есть ошибки."
         summary = f"✅ ДЗ_{hw_key} решено: {correct_count}/{total}\n«{phrase}»"
-        
-        # 🔥 ВАЖНО: Убрали protect_content=True, чтобы можно было сделать скриншот или переслать!
-        await update.message.reply_text(summary) 
-        
-        # 🔥 И инструкцию тоже делаем открытой
+
+        await update.message.reply_text(summary)
         await update.message.reply_text(
             "📤 Перешли сообщение с результатом мне в личку!\nЯ оценю твой прогресс 😊"
         )
-        
-        del user_checking[user_id]
-        # Меню можно оставить как есть
-        await show_main_menu(update.effective_chat.id, context, "🎉 Проверка завершена! Что дальше?")
+
+        has_errors = await show_retry_keyboard(update.message, hw_key, results)
+        if not has_errors:
+            del user_checking[user_id]
+            await show_main_menu(update.effective_chat.id, context, "🎉 Проверка завершена! Что дальше?")
+
+
 # ✍️ Проверка введённого пароля
 async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     message_text = update.message.text.strip()
-    
+
     if user_id in verified_users:
         return
-    
+
     if not context.user_data.get("agreed", False) or context.user_data.get("password_verified", False):
         return
-    
+
     if message_text == BOT_PASSWORD:
         context.user_data["password_verified"] = True
         verified_users.add(user_id)
@@ -457,30 +572,34 @@ async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ Неверный пароль! Попробуйте ещё раз или обратитесь к преподавателю.",
             protect_content=True
         )
-        context.user_data["agreed"] = False
+        # Не сбрасываем agreed — пусть попробует снова без повторного принятия оферты
 
-# ❌ Отмена ввода пароля (если вдруг нужна)
+
+# ❌ Отмена ввода пароля
 async def on_cancel_password(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["waiting_for_password"] = False
-    # ❗️ УБРАЛ protect_content
     await query.edit_message_text(
         "Ввод пароля отменён.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]])
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]]
+        )
     )
+
 
 # 🔄 Обработчик кнопки "Назад" и "Отмена"
 async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
+    if user_id in user_checking:
+        del user_checking[user_id]
     if query.data == "back_to_main":
         await show_main_menu(query.message.chat_id, context, "Главное меню:")
     elif query.data == "cancel_check":
-        user_id = query.from_user.id
-        if user_id in user_checking:
-            del user_checking[user_id]
         await show_main_menu(query.message.chat_id, context, "Проверка отменена!")
+
 
 # ✅ Обработчик принятия оферты
 async def on_accept_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -496,10 +615,11 @@ async def on_accept_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         protect_content=True
     )
 
+
 # 🚀 Запуск
 def main():
     app = Application.builder().token(TOKEN).build()
-    
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(on_accept_offer, pattern="^accept_offer$"))
     app.add_handler(CallbackQueryHandler(on_action, pattern="^action_(get|check|notes)$"))
@@ -507,14 +627,16 @@ def main():
     app.add_handler(CallbackQueryHandler(on_get_selected, pattern="^action_get_"))
     app.add_handler(CallbackQueryHandler(on_check_selected, pattern="^action_check_"))
     app.add_handler(CallbackQueryHandler(on_note_selected, pattern="^action_notes_"))
+    app.add_handler(CallbackQueryHandler(on_retry_task, pattern=r"^retry_"))
     app.add_handler(CallbackQueryHandler(on_back_button, pattern="^(back_to_main|cancel_check)$"))
     app.add_handler(CallbackQueryHandler(on_cancel_password, pattern="^cancel_password$"))
-    
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_password_input), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_answer), group=1)
-    
+
     print("✅ Бот запущен с защитой!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == "__main__":
     main()
