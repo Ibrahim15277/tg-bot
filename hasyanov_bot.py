@@ -1,6 +1,8 @@
 import logging
 import os
 import json
+import unicodedata
+from functools import wraps
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     Application,
@@ -17,7 +19,20 @@ if not TOKEN:
     raise ValueError("❌ Токен не найден! Убедись, что переменная окружения TOKEN установлена.")
 
 # 🔐 ПАРОЛЬ ДЛЯ ДОСТУПА
-BOT_PASSWORD = "student_has"  # ← ЗАМЕНИТЕ НА СВОЙ!
+# ⚠️ ЗАМЕНИТЕ "CHANGE_ME_2026" НА СВОЙ НОВЫЙ ПАРОЛЬ ПЕРЕД ЗАПУСКОМ!
+BOT_PASSWORD = "has_2027"
+
+# 👑 АДМИН(Ы) БОТА — только эти Telegram ID могут вызывать /reset_access и /check_files
+# Узнать свой ID: напишите боту @userinfobot в Telegram, он сразу пришлёт число.
+# Затем добавьте переменную окружения ADMIN_ID = ваш_id (там же, где TOKEN).
+# Если нужно несколько админов — перечислите ID через запятую: ADMIN_ID=111,222
+_admin_env = os.getenv("ADMIN_ID", "")
+ADMIN_IDS = {int(x.strip()) for x in _admin_env.split(",") if x.strip().isdigit()}
+
+
+def is_admin(user_id: int) -> bool:
+    return user_id in ADMIN_IDS
+
 
 # 📁 Пути к папкам
 HW_DIR = "./дз/"
@@ -113,6 +128,64 @@ def normalize(s: str) -> str:
     return " ".join(s.lower().split())
 
 
+# 🔧 ИСПРАВЛЕНИЕ БАГА: в Python 3.6+ int("19_21") = 1921 (подчёркивание — разделитель!)
+_SPECIAL_HW_KEYS = {
+    "19_21": "19_21",
+    "1921":  "19_21",
+    "7_изобр": "7_изобр",
+    "7_звуки": "7_звуки",
+}
+
+
+def parse_hw_key(s: str):
+    if s in _SPECIAL_HW_KEYS:
+        return _SPECIAL_HW_KEYS[s]
+    try:
+        return int(s)
+    except ValueError:
+        return s
+
+
+def normalize_hw_key(hw_num):
+    if hw_num in _SPECIAL_HW_KEYS or str(hw_num) in _SPECIAL_HW_KEYS:
+        return _SPECIAL_HW_KEYS.get(hw_num) or _SPECIAL_HW_KEYS.get(str(hw_num))
+    return hw_num
+
+
+def get_base_filename(num) -> str:
+    """
+    Единая логика построения 'базового' имени файла для номера ДЗ/конспекта.
+    Используется и при отправке файла, и при диагностике (/check_files),
+    чтобы они никогда не разъезжались между собой.
+    """
+    if str(num) in ["19", "20", "21", "19_21", "1921"]:
+        return "19_21"
+    if str(num) == "7_изобр":
+        return "7_изобр"
+    if str(num) == "7_звуки":
+        return "7_звуки"
+    return str(num)
+
+
+# 🔎 Устойчивый поиск файла (защита от unicode NFC/NFD рассинхрона в кириллических именах,
+# который часто возникает, если файлы хоть раз проходили через macOS/архиватор)
+def find_file_robust(directory: str, filename: str):
+    direct_path = os.path.join(directory, filename)
+    if os.path.exists(direct_path):
+        return direct_path
+    if not os.path.isdir(directory):
+        return None
+    target = unicodedata.normalize("NFC", filename).lower()
+    try:
+        entries = os.listdir(directory)
+    except OSError:
+        return None
+    for entry in entries:
+        if unicodedata.normalize("NFC", entry).lower() == target:
+            return os.path.join(directory, entry)
+    return None
+
+
 # 💾 Работа с проверенными пользователями
 def load_verified_users():
     if os.path.exists(VERIFIED_USERS_FILE):
@@ -134,6 +207,36 @@ def save_verified_users(verified_set):
 
 # 🌍 Глобальное множество проверенных пользователей
 verified_users = load_verified_users()
+
+
+# 🛡️ ДЕКОРАТОР ДОСТУПА
+# Вешается на любой обработчик, который должен работать ТОЛЬКО для проверенных пользователей.
+# Проверяет verified_users заново при КАЖДОМ нажатии/сообщении — а не один раз при /start.
+# Поэтому отзыв доступа (через /reset_access) мгновенно блокирует уже открытые меню у учеников.
+def require_verified(handler):
+    @wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        user_id = update.effective_user.id
+        if user_id in verified_users:
+            return await handler(update, context)
+
+        # Доступа нет — сбрасываем любое незавершённое состояние и сообщаем об этом
+        user_checking.pop(user_id, None)
+        denial_text = (
+            "⛔ Ваш доступ к боту закрыт.\n"
+            "Если вы новый ученик — нажмите /start и введите пароль, выданный преподавателем."
+        )
+        if update.callback_query:
+            query = update.callback_query
+            await query.answer("⛔ Доступ закрыт", show_alert=True)
+            try:
+                await query.edit_message_text(denial_text)
+            except Exception:
+                pass
+        elif update.message:
+            await update.message.reply_text(denial_text, protect_content=True)
+        return
+    return wrapper
 
 
 # 🔁 Показать кнопки с ошибками для повтора
@@ -163,6 +266,7 @@ async def show_retry_keyboard(message, hw_key, results):
 
 
 # 🔗 Полезные ссылки
+@require_verified
 async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -179,15 +283,17 @@ async def on_links(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
 
 
-# 📥 Отправка PDF
+# 📥 Отправка PDF (по уже готовому пути)
 async def send_pdf(query, file_path: str, caption: str = ""):
     try:
-        if os.path.exists(file_path):
+        if file_path and os.path.exists(file_path):
             with open(file_path, "rb") as f:
                 await query.message.reply_document(document=f, caption=caption, protect_content=True)
             return True
         else:
-            await query.message.reply_text(f"❌ Файл не найден: `{file_path}`", parse_mode="Markdown", protect_content=True)
+            await query.message.reply_text(
+                f"❌ Файл не найден: `{file_path}`", parse_mode="Markdown", protect_content=True
+            )
             return False
     except Exception as e:
         logger.error(f"Ошибка при отправке PDF: {e}")
@@ -197,22 +303,22 @@ async def send_pdf(query, file_path: str, caption: str = ""):
 
 # 📥 Отправка ДЗ + доп. файлы
 async def send_hw_pdf(query, hw_num):
-    if str(hw_num) in ["19", "20", "21", "19_21", "1921"]:
-        main_filename = "19_21"
-    elif str(hw_num) == "7_изобр":
-        main_filename = "7_изобр"
-    elif str(hw_num) == "7_звуки":
-        main_filename = "7_звуки"
-    else:
-        main_filename = str(hw_num)
+    main_filename = get_base_filename(hw_num)
 
-    main_path = os.path.join(HW_DIR, f"дз_{main_filename}.pdf")
+    # ⬇️ ключевое изменение: ищем файл устойчиво к unicode-несовпадениям,
+    # а не просто строим путь и надеемся, что он совпадёт побайтово
+    main_path = find_file_robust(HW_DIR, f"дз_{main_filename}.pdf")
+    if main_path is None:
+        main_path = os.path.join(HW_DIR, f"дз_{main_filename}.pdf")  # для текста ошибки
+
     if await send_pdf(query, main_path, f"📚 ДЗ №{hw_num}"):
-        zip_path = os.path.join(HW_DIR, f"файлы_{hw_num}.zip")
-        if os.path.exists(zip_path):
+        zip_path = find_file_robust(HW_DIR, f"файлы_{hw_num}.zip")
+        if zip_path:
             try:
                 with open(zip_path, "rb") as f:
-                    await query.message.reply_document(document=f, caption="📦 Дополнительные файлы (ZIP)", protect_content=True)
+                    await query.message.reply_document(
+                        document=f, caption="📦 Дополнительные файлы (ZIP)", protect_content=True
+                    )
             except Exception as e:
                 await query.message.reply_text(f"⚠️ Не удалось отправить ZIP: {e}", protect_content=True)
             return
@@ -233,18 +339,21 @@ async def send_hw_pdf(query, hw_num):
                     if os.path.isfile(file_path):
                         try:
                             with open(file_path, "rb") as f:
-                                await query.message.reply_document(document=f, caption=f"📎 {filename}", protect_content=True)
+                                await query.message.reply_document(
+                                    document=f, caption=f"📎 {filename}", protect_content=True
+                                )
                         except Exception as e:
-                            await query.message.reply_text(f"⚠️ Не удалось отправить {filename}: {e}", protect_content=True)
+                            await query.message.reply_text(
+                                f"⚠️ Не удалось отправить {filename}: {e}", protect_content=True
+                            )
 
 
 # 📖 Конспект
 async def send_note_pdf(query, note_num):
-    if str(note_num) in ["19", "20", "21", "19_21", "1921"]:
-        filename = "19_21"
-    else:
-        filename = str(note_num)
-    note_path = os.path.join(NOTES_DIR, f"Конспект_{filename}.pdf")
+    filename = get_base_filename(note_num)
+    note_path = find_file_robust(NOTES_DIR, f"Конспект_{filename}.pdf")
+    if note_path is None:
+        note_path = os.path.join(NOTES_DIR, f"Конспект_{filename}.pdf")
     await send_pdf(query, note_path, f"📝 Конспект №{filename}")
 
 
@@ -279,10 +388,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("🔐 Введите пароль, полученный от преподавателя:", protect_content=True)
         return
     keyboard = [[InlineKeyboardButton("✅ Принять оферту", callback_data="accept_offer")]]
-    await update.message.reply_text(FULL_OFFER, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", protect_content=True)
+    await update.message.reply_text(
+        FULL_OFFER, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", protect_content=True
+    )
 
 
-# 🎛️ Выбор действия (получить/проверить/конспекты)
+# 🎛️ Выбор действия
+@require_verified
 async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -305,34 +417,31 @@ async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # 📥 Получить ДЗ
+@require_verified
 async def on_get_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data.startswith("action_get_"):
         hw_num_str = query.data[len("action_get_"):]
-        try:
-            hw_num = int(hw_num_str)
-        except ValueError:
-            hw_num = hw_num_str
+        hw_num = parse_hw_key(hw_num_str)
         await send_hw_pdf(query, hw_num)
         await show_main_menu(query.message.chat_id, context, f"📚 ДЗ №{hw_num_str} отправлено! Что дальше?")
 
 
 # 📖 Конспекты
+@require_verified
 async def on_note_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if query.data.startswith("action_notes_"):
         note_num_str = query.data[len("action_notes_"):]
-        try:
-            note_num = int(note_num_str)
-        except ValueError:
-            note_num = note_num_str
+        note_num = parse_hw_key(note_num_str)
         await send_note_pdf(query, note_num)
         await show_main_menu(query.message.chat_id, context, f"📝 Конспект №{note_num_str} отправлен! Что дальше?")
 
 
 # 🔍 Проверить ДЗ — выбор номера ДЗ → показываем выбор задания
+@require_verified
 async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -340,26 +449,16 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     hw_num_str = query.data[len("action_check_"):]
-    if hw_num_str in ["1921", "19_21"]:
-        hw_key = "19_21"
-    else:
-        try:
-            hw_key = int(hw_num_str)
-        except ValueError:
-            hw_key = hw_num_str
+    hw_key = parse_hw_key(hw_num_str)
 
     total = len(homework.get(hw_key, []))
     if total == 0:
         await query.edit_message_text(f"❌ ДЗ №{hw_num_str} не найдено в базе.")
         return
 
-    # 🆕 Показываем выбор: все по порядку или конкретное задание
     keyboard = []
-
-    # Кнопка "Все по порядку"
     keyboard.append([InlineKeyboardButton("📋 Все по порядку (с №1)", callback_data=f"chktask_{hw_key}_all")])
 
-    # Кнопки с номерами заданий — по 5 в ряд
     row = []
     for t_num in range(1, total + 1):
         row.append(InlineKeyboardButton(str(t_num), callback_data=f"chktask_{hw_key}_{t_num}"))
@@ -368,7 +467,6 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
             row = []
     if row:
         keyboard.append(row)
-
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")])
 
     await query.edit_message_text(
@@ -378,34 +476,36 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # 🆕 Выбор конкретного задания для начала проверки
+@require_verified
 async def on_check_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
-    # Формат: chktask_{hw_key}_{task_num или all}
     without_prefix = query.data[len("chktask_"):]
     last_underscore = without_prefix.rfind("_")
+    if last_underscore == -1:
+        return
+
     hw_key_str = without_prefix[:last_underscore]
     task_num_str = without_prefix[last_underscore + 1:]
 
-    try:
-        hw_key = int(hw_key_str)
-    except ValueError:
-        hw_key = hw_key_str
+    hw_key = parse_hw_key(hw_key_str)
 
     total = len(homework.get(hw_key, []))
+    if total == 0:
+        await query.edit_message_text(f"❌ ДЗ не найдено в базе (ключ: {hw_key_str}).")
+        return
 
-    # Определяем стартовое задание
     if task_num_str == "all":
         start_task = 1
-        mode_single = False  # проверяем все по порядку
+        mode_single = False
     else:
         try:
             start_task = int(task_num_str)
         except ValueError:
             await query.edit_message_text("❌ Ошибка: неверный номер задания.")
             return
-        mode_single = True  # проверяем только одно конкретное задание
+        mode_single = True
 
     user_id = query.from_user.id
     user_checking[user_id] = {
@@ -413,7 +513,7 @@ async def on_check_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE
         "task": start_task,
         "results": [False] * total,
         "answered": set(),
-        "single_task": mode_single,   # 🆕 режим одного задания
+        "single_task": mode_single,
         "single_task_num": start_task if mode_single else None,
     }
 
@@ -431,6 +531,7 @@ async def on_check_task_start(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 # 🔁 Повтор конкретного задания по кнопке (после итога)
+@require_verified
 async def on_retry_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -443,10 +544,7 @@ async def on_retry_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hw_key_str = without_prefix[:last_underscore]
     task_num_str = without_prefix[last_underscore + 1:]
 
-    try:
-        hw_key = int(hw_key_str)
-    except ValueError:
-        hw_key = hw_key_str
+    hw_key = parse_hw_key(hw_key_str)
 
     try:
         task_num = int(task_num_str)
@@ -477,6 +575,7 @@ async def on_retry_task(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ✍️ Ввод ответа на ДЗ
+@require_verified
 async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     state = user_checking.get(user_id)
@@ -487,13 +586,11 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     task_num = state["task"]
     user_input = update.message.text.strip()
 
-    if isinstance(hw_num, str) and hw_num in ("1921", "19_21"):
-        hw_key = "19_21"
-    else:
-        hw_key = hw_num
+    hw_key = normalize_hw_key(hw_num)
 
     if hw_key not in homework:
         await update.message.reply_text(f"❌ ДЗ №{hw_key} не найдено в базе", protect_content=True)
+        del user_checking[user_id]
         return
 
     correct_answers = homework[hw_key]
@@ -506,13 +603,11 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     correct_ans = str(correct_answers[task_num - 1]).strip()
     is_correct = normalize(user_input) == normalize(correct_ans)
 
-    # Сообщение о результате текущего ответа
     if is_correct:
         await update.message.reply_text("✅ Верно!", protect_content=True)
     else:
         await update.message.reply_text("❌ Неверно.", protect_content=True)
 
-    # Обновляем результат по индексу (не append!)
     idx = task_num - 1
     if idx < len(state["results"]):
         state["results"][idx] = is_correct
@@ -520,19 +615,19 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state["answered"] = set()
     state["answered"].add(task_num)
 
-    # ── РЕЖИМ RETRY (после итога нажал на ❌ №X) ──────────────────────────────
+    # ── РЕЖИМ RETRY ───────────────────────────────────────────────────────────
     if state.get("retry_mode"):
         state.pop("retry_mode", None)
         results = state["results"]
         correct_count = sum(results)
-        await update.message.reply_text(f"📊 Текущий результат: {correct_count}/{total}", protect_content=True)
+        await update.message.reply_text(f"📊 Текущий результат по ДЗ №{hw_key}: {correct_count}/{total}", protect_content=True)
         has_errors = await show_retry_keyboard(update.message, hw_key, results)
         if not has_errors:
             del user_checking[user_id]
             await show_main_menu(update.effective_chat.id, context, "🎉 Все задания верны! Что дальше?")
         return
 
-    # ── РЕЖИМ ОДНОГО ЗАДАНИЯ (выбрал конкретный номер в начале) ───────────────
+    # ── РЕЖИМ ОДНОГО ЗАДАНИЯ ──────────────────────────────────────────────────
     if state.get("single_task"):
         del user_checking[user_id]
         keyboard = [
@@ -557,7 +652,6 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
             protect_content=True
         )
     else:
-        # Все задания пройдены — итог
         results = state["results"]
         correct_count = sum(results)
         phrase = "Ты молодец!" if correct_count == total else "Тренируйся. Есть ошибки."
@@ -599,11 +693,14 @@ async def on_cancel_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
     context.user_data["waiting_for_password"] = False
     await query.edit_message_text(
         "Ввод пароля отменён.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]])
+        reply_markup=InlineKeyboardMarkup(
+            [[InlineKeyboardButton("🏠 В главное меню", callback_data="back_to_main")]]
+        )
     )
 
 
 # 🔄 Назад / Отмена
+@require_verified
 async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -625,7 +722,112 @@ async def on_accept_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         protect_content=True
     )
     context.user_data["agreed"] = True
+    # ⬇️ важная мелочь: явно сбрасываем флаг, иначе ученик, который раньше уже был
+    # password_verified=True (а потом доступ отозвали через /reset_access),
+    # не сможет повторно ввести пароль — старое значение помешает.
+    context.user_data["password_verified"] = False
     await query.message.reply_text("🔐 Введите пароль, полученный от преподавателя:", protect_content=True)
+
+
+# 👑 /reset_access — мгновенно отозвать доступ у ВСЕХ учеников (только для админа)
+async def reset_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not ADMIN_IDS:
+        await update.message.reply_text(
+            "⚠️ ADMIN_ID не настроен в переменных окружения — команда временно недоступна никому.\n"
+            "Узнайте свой Telegram ID через @userinfobot и добавьте переменную окружения ADMIN_ID."
+        )
+        return
+    if not is_admin(user_id):
+        return  # молчим — не подтверждаем посторонним, что команда вообще существует
+
+    count = len(verified_users)
+    verified_users.clear()
+    save_verified_users(verified_users)
+    user_checking.clear()
+
+    # На всякий случай сбрасываем устаревшие флаги agreed/password_verified у всех,
+    # кого бот помнит в памяти (защита уже обеспечена декоратором require_verified,
+    # но так интерфейс /start ведёт себя предсказуемо сразу для всех).
+    try:
+        for uid, udata in context.application.user_data.items():
+            udata["agreed"] = False
+            udata["password_verified"] = False
+    except Exception as e:
+        logger.error(f"Не удалось сбросить user_data: {e}")
+
+    await update.message.reply_text(
+        f"✅ Доступ отозван у всех учеников ({count} чел.).\n"
+        "Не забудьте также сменить BOT_PASSWORD в коде на новый перед началом следующего потока."
+    )
+
+
+# 👑 /check_files — найти отсутствующие/неправильно названные файлы (только для админа)
+async def check_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        return
+
+    missing_hw = []
+    renamed_hw = []
+    for num in NUMBERS:
+        base = get_base_filename(num)
+        expected = f"дз_{base}.pdf"
+        direct = os.path.join(HW_DIR, expected)
+        if os.path.exists(direct):
+            continue
+        found = find_file_robust(HW_DIR, expected)
+        if found:
+            renamed_hw.append(f"№{num}: ожидался «{expected}», найден «{os.path.basename(found)}» (несовпадение unicode-формы — переименуйте файл)")
+        else:
+            missing_hw.append(f"№{num}: {expected}")
+
+    missing_notes = []
+    renamed_notes = []
+    for num in NUMBERS:
+        base = get_base_filename(num)
+        expected = f"Конспект_{base}.pdf"
+        direct = os.path.join(NOTES_DIR, expected)
+        if os.path.exists(direct):
+            continue
+        found = find_file_robust(NOTES_DIR, expected)
+        if found:
+            renamed_notes.append(f"№{num}: ожидался «{expected}», найден «{os.path.basename(found)}»")
+        else:
+            missing_notes.append(f"№{num}: {expected}")
+
+    lines = ["📋 <b>Диагностика файлов</b>\n"]
+
+    if not os.path.isdir(HW_DIR):
+        lines.append(f"❌ Папка ДЗ не найдена вообще: {HW_DIR}")
+    elif missing_hw:
+        lines.append(f"❌ <b>Отсутствуют ДЗ ({len(missing_hw)}):</b>")
+        lines.extend(missing_hw)
+    else:
+        lines.append("✅ Все ДЗ-файлы на месте.")
+
+    if renamed_hw:
+        lines.append("\n⚠️ <b>ДЗ найдены, но с другим именем (unicode):</b>")
+        lines.extend(renamed_hw)
+
+    lines.append("")
+
+    if not os.path.isdir(NOTES_DIR):
+        lines.append(f"❌ Папка конспектов не найдена вообще: {NOTES_DIR}")
+    elif missing_notes:
+        lines.append(f"❌ <b>Отсутствуют конспекты ({len(missing_notes)}):</b>")
+        lines.extend(missing_notes)
+    else:
+        lines.append("✅ Все конспекты на месте.")
+
+    if renamed_notes:
+        lines.append("\n⚠️ <b>Конспекты найдены, но с другим именем (unicode):</b>")
+        lines.extend(renamed_notes)
+
+    text = "\n".join(lines)
+    # Telegram ограничивает сообщение ~4096 символами — на всякий случай режем
+    for chunk_start in range(0, len(text), 3500):
+        await update.message.reply_text(text[chunk_start:chunk_start + 3500], parse_mode="HTML")
 
 
 # 🚀 Запуск
@@ -633,13 +835,15 @@ def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("reset_access", reset_access))
+    app.add_handler(CommandHandler("check_files", check_files))
     app.add_handler(CallbackQueryHandler(on_accept_offer, pattern="^accept_offer$"))
     app.add_handler(CallbackQueryHandler(on_action, pattern="^action_(get|check|notes)$"))
     app.add_handler(CallbackQueryHandler(on_links, pattern="^action_links$"))
     app.add_handler(CallbackQueryHandler(on_get_selected, pattern="^action_get_"))
     app.add_handler(CallbackQueryHandler(on_check_selected, pattern="^action_check_"))
     app.add_handler(CallbackQueryHandler(on_note_selected, pattern="^action_notes_"))
-    app.add_handler(CallbackQueryHandler(on_check_task_start, pattern=r"^chktask_"))   # 🆕
+    app.add_handler(CallbackQueryHandler(on_check_task_start, pattern=r"^chktask_"))
     app.add_handler(CallbackQueryHandler(on_retry_task, pattern=r"^retry_"))
     app.add_handler(CallbackQueryHandler(on_back_button, pattern="^(back_to_main|cancel_check)$"))
     app.add_handler(CallbackQueryHandler(on_cancel_password, pattern="^cancel_password$"))
