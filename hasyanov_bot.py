@@ -31,7 +31,7 @@ if not TOKEN:
 
 # 🔐 ПАРОЛЬ ДЛЯ ДОСТУПА
 # ⚠️ ЗАМЕНИТЕ "CHANGE_ME_2026" НА СВОЙ НОВЫЙ ПАРОЛЬ ПЕРЕД ЗАПУСКОМ!
-BOT_PASSWORD = "has_2027"
+BOT_PASSWORD = "Hasyanov_277"
 
 # 👑 АДМИН(Ы) БОТА — только эти Telegram ID могут вызывать /reset_access и /check_files
 # Узнать свой ID: напишите боту @userinfobot в Telegram, он сразу пришлёт число.
@@ -78,7 +78,8 @@ FULL_OFFER = (
 
 # 📜 Текст согласия — ученик отправляет его САМ (через reply-кнопку), это его собственное
 # сообщение в чате, а не текст от бота. Используется и как подпись кнопки, и для сверки.
-OFFER_CONSENT_TEXT = "Я даю полное согласие со всеми условиями оферты Исполнителя (Хасянова Ибрахима Галимовича)."
+OFFER_CONSENT_TEXT = "✅ Принять оферту"   # текст кнопки и сообщения от ученика — короткий
+OFFER_CONSENT_FULL = "Я даю полное согласие со всеми условиями оферты Исполнителя (Хасянова Ибрахима Галимовича)."  # полный текст для фиксации
 
 # 🔹 Номера ДЗ с доп. файлами
 HW_WITH_FOLDER = {3, 9, 10, 17, 18, 22, 24}
@@ -754,10 +755,10 @@ async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["agreed"] = True
         context.user_data["password_verified"] = False
         await update.message.reply_text(
-            "🔐 Введите пароль, полученный от преподавателя:",
+            f"📋 Принято. Текст вашего согласия зафиксирован:\n\n«{OFFER_CONSENT_FULL}»",
             reply_markup=ReplyKeyboardRemove(),
-
         )
+        await update.message.reply_text("🔐 Введите пароль, полученный от преподавателя:")
         return
 
     if not context.user_data.get("agreed", False) or context.user_data.get("password_verified", False):
