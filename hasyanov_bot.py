@@ -3,7 +3,18 @@ import os
 import json
 import unicodedata
 from functools import wraps
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from datetime import datetime
+from telegram import (
+    Update,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardRemove,
+    BotCommand,
+    BotCommandScopeChat,
+    BotCommandScopeDefault,
+)
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -38,8 +49,11 @@ def is_admin(user_id: int) -> bool:
 HW_DIR = "./дз/"
 NOTES_DIR = "./конспекты/"
 
-# 📁 Файл для хранения ID проверенных пользователей
-VERIFIED_USERS_FILE = "verified_users.json"
+# 📁 Файл для хранения проверенных пользователей
+# Если на хостинге настроена постоянная папка (например DATA_DIR=/app/data на bothost.ru),
+# храним файл там — иначе список доступа будет обнуляться при каждом передеплое бота.
+DATA_DIR = os.getenv("DATA_DIR", ".")
+VERIFIED_USERS_FILE = os.path.join(DATA_DIR, "verified_users.json")
 
 # 🔹 Список номеров ДЗ
 NUMBERS = list(range(1, 7)) + ["7_изобр", "7_звуки"] + list(range(8, 19)) + ["19_21"] + list(range(22, 28))
@@ -59,8 +73,12 @@ FULL_OFFER = (
     "<b>АВТОРСКИЕ ПРАВА:</b>\n"
     "• Все учебные материалы, записи и программный код бота являются интеллектуальной собственностью Исполнителя. Их коммерческое или публичное использование без письменного согласия запрещено.\n"
     "• Исполнитель вправе изменять условия оферты, новая редакция вступает в силу для будущих платежей.\n\n"
-    "🔹 Ознакомьтесь с условиями. Для продолжения необходимо принять оферту."
+    "🔹 Ознакомьтесь с условиями. Чтобы продолжить, нажмите кнопку ниже — она отправит сообщение о согласии от вашего имени."
 )
+
+# 📜 Текст согласия — ученик отправляет его САМ (через reply-кнопку), это его собственное
+# сообщение в чате, а не текст от бота. Используется и как подпись кнопки, и для сверки.
+OFFER_CONSENT_TEXT = "Я даю полное согласие со всеми условиями оферты Исполнителя (Хасянова Ибрахима Галимовича)."
 
 # 🔹 Номера ДЗ с доп. файлами
 HW_WITH_FOLDER = {3, 9, 10, 17, 18, 22, 24}
@@ -187,26 +205,60 @@ def find_file_robust(directory: str, filename: str):
 
 
 # 💾 Работа с проверенными пользователями
+# Формат: {user_id: {"name": ..., "username": ..., "verified_at": ...}}
+# (раньше был просто список ID — старый формат подхватывается автоматически)
 def load_verified_users():
     if os.path.exists(VERIFIED_USERS_FILE):
         try:
             with open(VERIFIED_USERS_FILE, "r", encoding="utf-8") as f:
-                return set(json.load(f))
-        except (json.JSONDecodeError, ValueError):
-            return set()
-    return set()
+                data = json.load(f)
+            if isinstance(data, list):
+                # старый формат — просто список ID, без имён
+                return {int(uid): {"name": "", "username": "", "verified_at": ""} for uid in data}
+            return {int(uid): info for uid, info in data.items()}
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            return {}
+    return {}
 
 
-def save_verified_users(verified_set):
+def save_verified_users(verified_dict):
     try:
+        os.makedirs(os.path.dirname(VERIFIED_USERS_FILE) or ".", exist_ok=True)
         with open(VERIFIED_USERS_FILE, "w", encoding="utf-8") as f:
-            json.dump(list(verified_set), f, ensure_ascii=False, indent=2)
+            json.dump({str(uid): info for uid, info in verified_dict.items()}, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logger.error(f"Ошибка при сохранении проверенных пользователей: {e}")
 
 
+# 🚫 Чёрный список — отдельно от verified_users.
+# Сюда попадают через /revoke те, у кого расторгнут договор: даже зная общий пароль класса,
+# они больше не смогут зайти, пока админ явно не вернёт доступ через /grant.
+BANNED_USERS_FILE = os.path.join(DATA_DIR, "banned_users.json")
+
+
+def load_banned_users():
+    if os.path.exists(BANNED_USERS_FILE):
+        try:
+            with open(BANNED_USERS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return {int(uid): info for uid, info in data.items()}
+        except (json.JSONDecodeError, ValueError, AttributeError):
+            return {}
+    return {}
+
+
+def save_banned_users(banned_dict):
+    try:
+        os.makedirs(os.path.dirname(BANNED_USERS_FILE) or ".", exist_ok=True)
+        with open(BANNED_USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump({str(uid): info for uid, info in banned_dict.items()}, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        logger.error(f"Ошибка при сохранении чёрного списка: {e}")
+
+
 # 🌍 Глобальное множество проверенных пользователей
 verified_users = load_verified_users()
+banned_users = load_banned_users()
 
 
 # 🛡️ ДЕКОРАТОР ДОСТУПА
@@ -234,7 +286,7 @@ def require_verified(handler):
             except Exception:
                 pass
         elif update.message:
-            await update.message.reply_text(denial_text, protect_content=True)
+            await update.message.reply_text(denial_text)
         return
     return wrapper
 
@@ -260,7 +312,7 @@ async def show_retry_keyboard(message, hw_key, results):
     await message.reply_text(
         "🔁 Хочешь переделать конкретное задание? Нажми на номер:",
         reply_markup=InlineKeyboardMarkup(keyboard),
-        protect_content=True
+
     )
     return True
 
@@ -292,12 +344,12 @@ async def send_pdf(query, file_path: str, caption: str = ""):
             return True
         else:
             await query.message.reply_text(
-                f"❌ Файл не найден: `{file_path}`", parse_mode="Markdown", protect_content=True
+                f"❌ Файл не найден: `{file_path}`", parse_mode="Markdown"
             )
             return False
     except Exception as e:
         logger.error(f"Ошибка при отправке PDF: {e}")
-        await query.message.reply_text(f"❌ Ошибка при отправке файла: {e}", protect_content=True)
+        await query.message.reply_text(f"❌ Ошибка при отправке файла: {e}")
         return False
 
 
@@ -320,7 +372,7 @@ async def send_hw_pdf(query, hw_num):
                         document=f, caption="📦 Дополнительные файлы (ZIP)", protect_content=True
                     )
             except Exception as e:
-                await query.message.reply_text(f"⚠️ Не удалось отправить ZIP: {e}", protect_content=True)
+                await query.message.reply_text(f"⚠️ Не удалось отправить ZIP: {e}")
             return
 
         if isinstance(hw_num, int) and hw_num in HW_WITH_FOLDER:
@@ -344,7 +396,7 @@ async def send_hw_pdf(query, hw_num):
                                 )
                         except Exception as e:
                             await query.message.reply_text(
-                                f"⚠️ Не удалось отправить {filename}: {e}", protect_content=True
+                                f"⚠️ Не удалось отправить {filename}: {e}"
                             )
 
 
@@ -359,8 +411,7 @@ async def send_note_pdf(query, note_num):
 
 # 🏁 Главное меню
 async def show_main_menu(chat_id, context: ContextTypes.DEFAULT_TYPE,
-                         message_text: str = "👋 Чем займёмся сегодня?",
-                         protect: bool = True):
+                         message_text: str = "👋 Чем займёмся сегодня?"):
     keyboard = [
         [InlineKeyboardButton("📚 Получить ДЗ", callback_data="action_get")],
         [InlineKeyboardButton("🔍 Проверить ДЗ", callback_data="action_check")],
@@ -372,7 +423,6 @@ async def show_main_menu(chat_id, context: ContextTypes.DEFAULT_TYPE,
         text=message_text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML",
-        protect_content=protect
     )
 
 
@@ -382,14 +432,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in verified_users:
         context.user_data["agreed"] = True
         context.user_data["password_verified"] = True
+        # Подтягиваем актуальное имя/username — полезно после /grant (когда они ещё не были известны)
+        # и на случай, если ученик сменил имя в Telegram.
+        user = update.effective_user
+        entry = verified_users[user_id]
+        if entry.get("name") != (user.full_name or "") or entry.get("username") != (user.username or ""):
+            entry["name"] = user.full_name or ""
+            entry["username"] = user.username or ""
+            save_verified_users(verified_users)
         await show_main_menu(update.effective_chat.id, context)
         return
-    if context.user_data.get("agreed", False) and not context.user_data.get("password_verified", False):
-        await update.message.reply_text("🔐 Введите пароль, полученный от преподавателя:", protect_content=True)
+    if user_id in banned_users:
+        await update.message.reply_text(
+            "🚫 Доступ для вас закрыт администратором. Обратитесь к преподавателю напрямую.",
+
+        )
         return
-    keyboard = [[InlineKeyboardButton("✅ Принять оферту", callback_data="accept_offer")]]
+    if context.user_data.get("agreed", False) and not context.user_data.get("password_verified", False):
+        await update.message.reply_text("🔐 Введите пароль, полученный от преподавателя:")
+        return
+    keyboard = ReplyKeyboardMarkup(
+        [[KeyboardButton(OFFER_CONSENT_TEXT)]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
     await update.message.reply_text(
-        FULL_OFFER, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML", protect_content=True
+        FULL_OFFER, reply_markup=keyboard, parse_mode="HTML"
     )
 
 
@@ -589,7 +657,7 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     hw_key = normalize_hw_key(hw_num)
 
     if hw_key not in homework:
-        await update.message.reply_text(f"❌ ДЗ №{hw_key} не найдено в базе", protect_content=True)
+        await update.message.reply_text(f"❌ ДЗ №{hw_key} не найдено в базе")
         del user_checking[user_id]
         return
 
@@ -597,16 +665,16 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total = len(correct_answers)
 
     if task_num < 1 or task_num > total:
-        await update.message.reply_text(f"❌ Задание №{task_num} не найдено", protect_content=True)
+        await update.message.reply_text(f"❌ Задание №{task_num} не найдено")
         return
 
     correct_ans = str(correct_answers[task_num - 1]).strip()
     is_correct = normalize(user_input) == normalize(correct_ans)
 
     if is_correct:
-        await update.message.reply_text("✅ Верно!", protect_content=True)
+        await update.message.reply_text("✅ Верно!")
     else:
-        await update.message.reply_text("❌ Неверно.", protect_content=True)
+        await update.message.reply_text("❌ Неверно.")
 
     idx = task_num - 1
     if idx < len(state["results"]):
@@ -620,7 +688,7 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state.pop("retry_mode", None)
         results = state["results"]
         correct_count = sum(results)
-        await update.message.reply_text(f"📊 Текущий результат по ДЗ №{hw_key}: {correct_count}/{total}", protect_content=True)
+        await update.message.reply_text(f"📊 Текущий результат по ДЗ №{hw_key}: {correct_count}/{total}")
         has_errors = await show_retry_keyboard(update.message, hw_key, results)
         if not has_errors:
             del user_checking[user_id]
@@ -637,7 +705,7 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Хочешь проверить ещё одно задание или вернуться в меню?",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            protect_content=True
+
         )
         return
 
@@ -649,7 +717,7 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📌 Задание #{next_task} из {total}:",
             reply_markup=InlineKeyboardMarkup(keyboard),
-            protect_content=True
+
         )
     else:
         results = state["results"]
@@ -657,7 +725,10 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phrase = "Ты молодец!" if correct_count == total else "Тренируйся. Есть ошибки."
         summary = f"✅ ДЗ_{hw_key} решено: {correct_count}/{total}\n«{phrase}»"
         await update.message.reply_text(summary)
-        await update.message.reply_text("📤 Перешли сообщение с результатом мне в личку!\nЯ оценю твой прогресс 😊")
+        await update.message.reply_text(
+            "📸 Сделай скриншот этого результата и отправь мне его в личку!\nЯ оценю твой прогресс 😊",
+
+        )
 
         has_errors = await show_retry_keyboard(update.message, hw_key, results)
         if not has_errors:
@@ -671,18 +742,41 @@ async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message_text = update.message.text.strip()
     if user_id in verified_users:
         return
+    if user_id in banned_users:
+        await update.message.reply_text(
+            "🚫 Доступ для вас закрыт администратором. Обратитесь к преподавателю напрямую.",
+
+        )
+        return
+
+    # ── Согласие с офертой: это реальное сообщение, отправленное самим учеником ────────
+    if message_text == OFFER_CONSENT_TEXT and not context.user_data.get("agreed", False):
+        context.user_data["agreed"] = True
+        context.user_data["password_verified"] = False
+        await update.message.reply_text(
+            "🔐 Введите пароль, полученный от преподавателя:",
+            reply_markup=ReplyKeyboardRemove(),
+
+        )
+        return
+
     if not context.user_data.get("agreed", False) or context.user_data.get("password_verified", False):
         return
     if message_text == BOT_PASSWORD:
         context.user_data["password_verified"] = True
-        verified_users.add(user_id)
+        user = update.effective_user
+        verified_users[user_id] = {
+            "name": user.full_name or "",
+            "username": user.username or "",
+            "verified_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        }
         save_verified_users(verified_users)
-        await update.message.reply_text("✅ Пароль верен! Добро пожаловать!", protect_content=True)
+        await update.message.reply_text("✅ Пароль верен! Добро пожаловать!")
         await show_main_menu(update.effective_chat.id, context)
     else:
         await update.message.reply_text(
             "❌ Неверный пароль! Попробуйте ещё раз или обратитесь к преподавателю.",
-            protect_content=True
+
         )
 
 
@@ -711,22 +805,6 @@ async def on_back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(query.message.chat_id, context, "Главное меню:")
     elif query.data == "cancel_check":
         await show_main_menu(query.message.chat_id, context, "Проверка отменена!")
-
-
-# ✅ Принятие оферты
-async def on_accept_offer(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.message.reply_text(
-        "Я даю полное согласие со всеми условиями оферты Исполнителя (Хасянова Ибрахима Галимовича).",
-        protect_content=True
-    )
-    context.user_data["agreed"] = True
-    # ⬇️ важная мелочь: явно сбрасываем флаг, иначе ученик, который раньше уже был
-    # password_verified=True (а потом доступ отозвали через /reset_access),
-    # не сможет повторно ввести пароль — старое значение помешает.
-    context.user_data["password_verified"] = False
-    await query.message.reply_text("🔐 Введите пароль, полученный от преподавателя:", protect_content=True)
 
 
 # 👑 /reset_access — мгновенно отозвать доступ у ВСЕХ учеников (только для админа)
@@ -830,14 +908,168 @@ async def check_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text[chunk_start:chunk_start + 3500], parse_mode="HTML")
 
 
+# 👑 /students — список учеников с доступом (только для админа)
+async def list_students(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        return
+
+    students = {uid: info for uid, info in verified_users.items() if uid not in ADMIN_IDS}
+
+    if not students:
+        await update.message.reply_text("📋 Сейчас нет ни одного ученика с доступом.")
+        return
+
+    lines = [f"📋 <b>Учеников с доступом: {len(students)}</b>\n"]
+    for uid, info in students.items():
+        name = info.get("name") or "Без имени"
+        username = f" (@{info['username']})" if info.get("username") else ""
+        when = info.get("verified_at")
+        when_str = f" — вошёл {when}" if when else ""
+        lines.append(f"• {name}{username} — id <code>{uid}</code>{when_str}")
+
+    text = "\n".join(lines)
+    for chunk_start in range(0, len(text), 3500):
+        await update.message.reply_text(text[chunk_start:chunk_start + 3500], parse_mode="HTML")
+
+
+# 👑 /revoke <id> — забрать доступ у ОДНОГО ученика, не трогая остальных (только для админа)
+async def revoke_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Использование: <code>/revoke ID</code>\nID ученика можно посмотреть командой /students",
+            parse_mode="HTML"
+        )
+        return
+
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID должен быть числом — посмотри его через /students.")
+        return
+
+    if target_id not in verified_users:
+        await update.message.reply_text(f"⚠️ У пользователя {target_id} и так нет доступа.")
+        return
+
+    info = verified_users.pop(target_id)
+    save_verified_users(verified_users)
+    user_checking.pop(target_id, None)
+
+    banned_users[target_id] = {
+        "name": info.get("name") or "",
+        "username": info.get("username") or "",
+        "revoked_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    save_banned_users(banned_users)
+
+    name = info.get("name") or str(target_id)
+    await update.message.reply_text(
+        f"✅ Доступ у «{name}» (id {target_id}) отозван навсегда.\n"
+        f"Даже зная пароль, он больше не сможет войти — пока ты не вернёшь доступ через /grant {target_id}."
+    )
+
+
+# 👑 /broadcast текст — разослать сообщение всем ученикам с доступом (только для админа)
+async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        return
+
+    if not context.args:
+        await update.message.reply_text("Использование: <code>/broadcast текст сообщения</code>", parse_mode="HTML")
+        return
+
+    text = " ".join(context.args)
+    sent, failed = 0, 0
+    for uid in list(verified_users.keys()):
+        try:
+            await context.bot.send_message(chat_id=uid, text=f"📢 {text}")
+            sent += 1
+        except Exception as e:
+            failed += 1
+            logger.error(f"Не удалось отправить рассылку пользователю {uid}: {e}")
+
+    await update.message.reply_text(f"✅ Рассылка отправлена: {sent} получили, {failed} не удалось доставить.")
+
+
+# 👑 /grant <id> — вернуть доступ конкретному ID напрямую: снимает с чёрного списка
+# и сразу даёт доступ, без повторного ввода пароля (только для админа)
+async def grant_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if not is_admin(user_id):
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Использование: <code>/grant ID</code>\nID можно узнать через /students или попросив ученика написать @userinfobot",
+            parse_mode="HTML"
+        )
+        return
+
+    try:
+        target_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("❌ ID должен быть числом.")
+        return
+
+    was_banned = banned_users.pop(target_id, None)
+    if was_banned:
+        save_banned_users(banned_users)
+
+    if target_id in verified_users:
+        await update.message.reply_text(f"⚠️ У {target_id} и так есть доступ.")
+        return
+
+    verified_users[target_id] = {
+        "name": (was_banned or {}).get("name", ""),
+        "username": (was_banned or {}).get("username", ""),
+        "verified_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+    }
+    save_verified_users(verified_users)
+
+    await update.message.reply_text(
+        f"✅ Доступ выдан напрямую (id {target_id}), пароль не понадобился.\n"
+        f"Имя обновится автоматически, как только ученик откроет бота командой /start."
+    )
+
+
+# 👑 Команды-подсказки только в личном чате с админом (у остальных виден только /start)
+async def post_init(application: Application):
+    await application.bot.set_my_commands(
+        [BotCommand("start", "Начать работу с ботом")],
+        scope=BotCommandScopeDefault()
+    )
+    admin_commands = [
+        BotCommand("students", "Список учеников с доступом"),
+        BotCommand("revoke", "Забрать доступ у одного ученика по ID (навсегда)"),
+        BotCommand("grant", "Вернуть/выдать доступ ученику по ID"),
+        BotCommand("reset_access", "Отозвать доступ у ВСЕХ учеников"),
+        BotCommand("broadcast", "Разослать сообщение всем ученикам"),
+        BotCommand("check_files", "Проверить наличие файлов ДЗ/конспектов"),
+    ]
+    for admin_id in ADMIN_IDS:
+        try:
+            await application.bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(chat_id=admin_id))
+        except Exception as e:
+            logger.error(f"Не удалось установить команды для админа {admin_id}: {e}")
+
+
 # 🚀 Запуск
 def main():
-    app = Application.builder().token(TOKEN).build()
+    app = Application.builder().token(TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("reset_access", reset_access))
     app.add_handler(CommandHandler("check_files", check_files))
-    app.add_handler(CallbackQueryHandler(on_accept_offer, pattern="^accept_offer$"))
+    app.add_handler(CommandHandler("students", list_students))
+    app.add_handler(CommandHandler("revoke", revoke_student))
+    app.add_handler(CommandHandler("grant", grant_student))
+    app.add_handler(CommandHandler("broadcast", broadcast_message))
     app.add_handler(CallbackQueryHandler(on_action, pattern="^action_(get|check|notes)$"))
     app.add_handler(CallbackQueryHandler(on_links, pattern="^action_links$"))
     app.add_handler(CallbackQueryHandler(on_get_selected, pattern="^action_get_"))
