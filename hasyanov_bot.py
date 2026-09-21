@@ -30,7 +30,6 @@ if not TOKEN:
     raise ValueError("❌ Токен не найден! Убедись, что переменная окружения TOKEN установлена.")
 
 # 🔐 ПАРОЛЬ ДЛЯ ДОСТУПА
-# ⚠️ ЗАМЕНИТЕ "CHANGE_ME_2026" НА СВОЙ НОВЫЙ ПАРОЛЬ ПЕРЕД ЗАПУСКОМ!
 BOT_PASSWORD = "Ibrahim_277"
 
 # 👑 АДМИН(Ы) БОТА — только эти Telegram ID могут вызывать /reset_access и /check_files
@@ -50,8 +49,6 @@ HW_DIR = "./дз/"
 NOTES_DIR = "./конспекты/"
 
 # 📁 Файл для хранения проверенных пользователей
-# Если на хостинге настроена постоянная папка (например DATA_DIR=/app/data на bothost.ru),
-# храним файл там — иначе список доступа будет обнуляться при каждом передеплое бота.
 DATA_DIR = os.getenv("DATA_DIR", ".")
 VERIFIED_USERS_FILE = os.path.join(DATA_DIR, "verified_users.json")
 
@@ -76,18 +73,19 @@ FULL_OFFER = (
     "🔹 Ознакомьтесь с условиями. Чтобы продолжить, нажмите кнопку ниже — она отправит сообщение о согласии от вашего имени."
 )
 
-# 📜 Текст согласия — ученик отправляет его САМ (через reply-кнопку), это его собственное
-# сообщение в чате, а не текст от бота. Используется и как подпись кнопки, и для сверки.
-OFFER_CONSENT_TEXT = "✅ Принять оферту"   # текст кнопки и сообщения от ученика — короткий
-OFFER_CONSENT_FULL = "Я даю полное согласие со всеми условиями оферты Исполнителя (Хасянова Ибрахима Галимовича)."  # полный текст для фиксации
+# 📜 Текст согласия — ученик отправляет его САМ (через reply-кнопку)
+OFFER_CONSENT_TEXT = "✅ Принять оферту"
+OFFER_CONSENT_FULL = "Я даю полное согласие со всеми условиями оферты Исполнителя (Хасянова Ибрахима Галимовича)."
 
 # 🔹 Номера ДЗ с доп. файлами
-HW_WITH_FOLDER = {3, 9, 10, 17, 18, 22, 24}
+# ⬇️ ИЗМЕНЕНО: у ДЗ 10 больше нет дополнительных файлов — номер убран из списка.
+HW_WITH_FOLDER = {3, 9, 17, 18, 22, 24}
 
-# 📝 ОТВЕТЫ НА ВСЕ ДЗ
+# 📝 ОТВЕТЫ НА ВСЕ ДЗ (сверено с файлом «Ответы.docx»)
 homework = {
     1: ["14", "25", "17", "18", "124", "25", "42", "18", "68", "46"],
     2: ["zwyx", "xzyw", "wxyz", "cdab", "wxyz", "yxzw", "yxwz", "zywx", "xyzw", "zxwy"],
+    # №6 — отрицательное число
     3: ["60065", "305", "1164", "360480", "8400", "64460", "1985", "723", "941", "241626112"],
     4: ["8", "7", "16", "18", "21", "12", "19", "14", "100", "1010"],
     5: ["20", "9", "11", "69", "11", "17", "35", "8", "29", "1958"],
@@ -96,16 +94,19 @@ homework = {
     "7_звуки": ["17", "43200", "10", "15", "44", "320", "124", "3200", "2", "12"],
     8: ["840", "117601", "3352", "239760", "7466", "46656", "2430", "144", "588", "1610507"],
     9: ["261", "3", "94", "2", "46", "3", "13412", "112", "75", "53"],
-    10: ["47", "42", "10", "7", "5", "6", "2", "117", "20", "8"],
+    # ⬇️ ПОЛНОСТЬЮ НОВЫЕ ОТВЕТЫ (в №5 ответ записан с точками)
+    10: ["14", "254", "2", "15", "34.160.16.0", "2", "192", "1195255254", "349526", "378"],
     11: ["512", "256", "12", "22", "896", "7", "200", "129", "8", "9"],
     12: ["28", "701", "622", "120", "239", "544", "618", "254", "442", "126"],
-    13: ["14", "254", "2", "15", "34160160", "2", "192", "1195255254", "349526", "378"],
+    # ⬇️ ПОЛНОСТЬЮ НОВЫЕ ОТВЕТЫ
+    13: ["133", "200", "200", "133280", "12", "35", "22", "273", "6090", "1408"],
     14: ["43", "15", "220", "2029", "26", "5718", "27", "250", "224", "224"],
     15: ["89", "25", "17", "54", "54", "78", "19", "41", "3", "190"],
     16: ["12114", "4045", "8102", "77309406959", "67", "750", "12487", "1078", "66048", "38043606640000"],
+    # ⬇️ №9 теперь два числа через пробел: «24 9933»
     17: ["1591 9233", "2089 99343", "720 87094", "2890 276074548",
          "8631 199187", "99999 1985089", "2627 504410", "104 191",
-         "249933", "77 8664"],
+         "24 9933", "77 8664"],
     18: ["2071 649", "2292 524", "2407 1101", "2662 364",
          "2400 852", "2538 630", "2671 419", "1271 754",
          "2358 877", "3154 887"],
@@ -113,7 +114,6 @@ homework = {
               "28 48 54 47", "17 11 23 6", "13 10 19 6", "28 25 52 33",
               "40 10 39 7", "54 98 106 97"],
     22: ["1375", "36", "14", "6", "18", "32", "3", "7", "7", "158"],
-    23: ["133", "200", "200", "133280", "12", "301", "22", "273", "6090", "12420"],
     24: ["544", "202", "22", "19", "169", "750", "111", "2981", "154", "35"],
     25: [
         "1253475 619\n12103425 5977\n12593475 6219\n12913425 6377",
@@ -127,8 +127,9 @@ homework = {
         "142 473759\n118 462767\n126 464999\n118 461969\n118 477071",
         "6080069\n6080131\n6080141\n6080147\n6080149\n6080153\n6080161"
     ],
-    26: ["?", "?", "?", "?", "?", "?", "?", "?", "?", "?"],
-    27: ["?", "?", "?", "?", "?", "?", "?", "?", "?", "?"],
+    # ❗ ДЗ 23, 26 и 27 в файле ответов отсутствуют.
+    # Их PDF и конспекты по-прежнему можно скачать, но кнопки «Проверить ДЗ» для них
+    # не показываются — чтобы бот не засчитывал ответы по пустышкам «?».
 }
 
 # 📊 Состояния пользователей
@@ -171,6 +172,10 @@ def normalize_hw_key(hw_num):
     return hw_num
 
 
+# 🔹 Номера ДЗ, для которых есть ответы — только они показываются в меню «Проверить ДЗ»
+CHECKABLE_NUMBERS = [num for num in NUMBERS if homework.get(normalize_hw_key(num))]
+
+
 def get_base_filename(num) -> str:
     """
     Единая логика построения 'базового' имени файла для номера ДЗ/конспекта.
@@ -186,8 +191,7 @@ def get_base_filename(num) -> str:
     return str(num)
 
 
-# 🔎 Устойчивый поиск файла (защита от unicode NFC/NFD рассинхрона в кириллических именах,
-# который часто возникает, если файлы хоть раз проходили через macOS/архиватор)
+# 🔎 Устойчивый поиск файла (защита от unicode NFC/NFD рассинхрона в кириллических именах)
 def find_file_robust(directory: str, filename: str):
     direct_path = os.path.join(directory, filename)
     if os.path.exists(direct_path):
@@ -206,15 +210,12 @@ def find_file_robust(directory: str, filename: str):
 
 
 # 💾 Работа с проверенными пользователями
-# Формат: {user_id: {"name": ..., "username": ..., "verified_at": ...}}
-# (раньше был просто список ID — старый формат подхватывается автоматически)
 def load_verified_users():
     if os.path.exists(VERIFIED_USERS_FILE):
         try:
             with open(VERIFIED_USERS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, list):
-                # старый формат — просто список ID, без имён
                 return {int(uid): {"name": "", "username": "", "verified_at": ""} for uid in data}
             return {int(uid): info for uid, info in data.items()}
         except (json.JSONDecodeError, ValueError, AttributeError):
@@ -231,9 +232,7 @@ def save_verified_users(verified_dict):
         logger.error(f"Ошибка при сохранении проверенных пользователей: {e}")
 
 
-# 🚫 Чёрный список — отдельно от verified_users.
-# Сюда попадают через /revoke те, у кого расторгнут договор: даже зная общий пароль класса,
-# они больше не смогут зайти, пока админ явно не вернёт доступ через /grant.
+# 🚫 Чёрный список
 BANNED_USERS_FILE = os.path.join(DATA_DIR, "banned_users.json")
 
 
@@ -263,9 +262,6 @@ banned_users = load_banned_users()
 
 
 # 🛡️ ДЕКОРАТОР ДОСТУПА
-# Вешается на любой обработчик, который должен работать ТОЛЬКО для проверенных пользователей.
-# Проверяет verified_users заново при КАЖДОМ нажатии/сообщении — а не один раз при /start.
-# Поэтому отзыв доступа (через /reset_access) мгновенно блокирует уже открытые меню у учеников.
 def require_verified(handler):
     @wraps(handler)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -273,7 +269,6 @@ def require_verified(handler):
         if user_id in verified_users:
             return await handler(update, context)
 
-        # Доступа нет — сбрасываем любое незавершённое состояние и сообщаем об этом
         user_checking.pop(user_id, None)
         denial_text = (
             "⛔ Ваш доступ к боту закрыт.\n"
@@ -313,7 +308,6 @@ async def show_retry_keyboard(message, hw_key, results):
     await message.reply_text(
         "🔁 Хочешь переделать конкретное задание? Нажми на номер:",
         reply_markup=InlineKeyboardMarkup(keyboard),
-
     )
     return True
 
@@ -358,8 +352,6 @@ async def send_pdf(query, file_path: str, caption: str = ""):
 async def send_hw_pdf(query, hw_num):
     main_filename = get_base_filename(hw_num)
 
-    # ⬇️ ключевое изменение: ищем файл устойчиво к unicode-несовпадениям,
-    # а не просто строим путь и надеемся, что он совпадёт побайтово
     main_path = find_file_robust(HW_DIR, f"дз_{main_filename}.pdf")
     if main_path is None:
         main_path = os.path.join(HW_DIR, f"дз_{main_filename}.pdf")  # для текста ошибки
@@ -433,8 +425,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_id in verified_users:
         context.user_data["agreed"] = True
         context.user_data["password_verified"] = True
-        # Подтягиваем актуальное имя/username — полезно после /grant (когда они ещё не были известны)
-        # и на случай, если ученик сменил имя в Telegram.
         user = update.effective_user
         entry = verified_users[user_id]
         if entry.get("name") != (user.full_name or "") or entry.get("username") != (user.username or ""):
@@ -445,8 +435,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_id in banned_users:
         await update.message.reply_text(
-            "🚫 Доступ для вас закрыт администратором. Обратитесь к преподавателю напрямую.",
-
+            "🚫 Доступ для вас закрыт администратором. Обратитесь к преподавателю напрямую."
         )
         return
     if context.user_data.get("agreed", False) and not context.user_data.get("password_verified", False):
@@ -467,11 +456,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def on_action(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    # Для проверки показываем только те ДЗ, для которых в боте реально есть ответы
+    numbers = CHECKABLE_NUMBERS if query.data == "action_check" else NUMBERS
+
     keyboard = []
-    for i in range(0, len(NUMBERS), 3):
+    for i in range(0, len(numbers), 3):
         row = [
             InlineKeyboardButton(str(num), callback_data=f"{query.data}_{num}")
-            for num in NUMBERS[i:i+3]
+            for num in numbers[i:i+3]
         ]
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back_to_main")])
@@ -522,7 +515,7 @@ async def on_check_selected(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     total = len(homework.get(hw_key, []))
     if total == 0:
-        await query.edit_message_text(f"❌ ДЗ №{hw_num_str} не найдено в базе.")
+        await query.edit_message_text(f"❌ Ответы к ДЗ №{hw_num_str} пока не загружены в бота.")
         return
 
     keyboard = []
@@ -705,7 +698,6 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "Хочешь проверить ещё одно задание или вернуться в меню?",
             reply_markup=InlineKeyboardMarkup(keyboard),
-
         )
         return
 
@@ -717,7 +709,6 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📌 Задание #{next_task} из {total}:",
             reply_markup=InlineKeyboardMarkup(keyboard),
-
         )
     else:
         results = state["results"]
@@ -726,8 +717,7 @@ async def on_answer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary = f"✅ ДЗ_{hw_key} решено: {correct_count}/{total}\n«{phrase}»"
         await update.message.reply_text(summary)
         await update.message.reply_text(
-            "📸 Сделай скриншот этого результата и отправь мне его в личку!\nЯ оценю твой прогресс 😊",
-
+            "📸 Сделай скриншот этого результата и отправь мне его в личку!\nЯ оценю твой прогресс 😊"
         )
 
         has_errors = await show_retry_keyboard(update.message, hw_key, results)
@@ -744,12 +734,11 @@ async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     if user_id in banned_users:
         await update.message.reply_text(
-            "🚫 Доступ для вас закрыт администратором. Обратитесь к преподавателю напрямую.",
-
+            "🚫 Доступ для вас закрыт администратором. Обратитесь к преподавателю напрямую."
         )
         return
 
-    # ── Согласие с офертой: это реальное сообщение, отправленное самим учеником ────────
+    # ── Согласие с офертой ────────────────────────────────────────────────────
     if message_text == OFFER_CONSENT_TEXT and not context.user_data.get("agreed", False):
         context.user_data["agreed"] = True
         context.user_data["password_verified"] = False
@@ -775,8 +764,7 @@ async def on_password_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_main_menu(update.effective_chat.id, context)
     else:
         await update.message.reply_text(
-            "❌ Неверный пароль! Попробуйте ещё раз или обратитесь к преподавателю.",
-
+            "❌ Неверный пароль! Попробуйте ещё раз или обратитесь к преподавателю."
         )
 
 
@@ -824,9 +812,6 @@ async def reset_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
     save_verified_users(verified_users)
     user_checking.clear()
 
-    # На всякий случай сбрасываем устаревшие флаги agreed/password_verified у всех,
-    # кого бот помнит в памяти (защита уже обеспечена декоратором require_verified,
-    # но так интерфейс /start ведёт себя предсказуемо сразу для всех).
     try:
         for uid, udata in context.application.user_data.items():
             udata["agreed"] = False
@@ -902,6 +887,11 @@ async def check_files(update: Update, context: ContextTypes.DEFAULT_TYPE):
         lines.append("\n⚠️ <b>Конспекты найдены, но с другим именем (unicode):</b>")
         lines.extend(renamed_notes)
 
+    # Заодно показываем, по каким ДЗ в боте ещё нет ответов
+    no_answers = [str(num) for num in NUMBERS if not homework.get(normalize_hw_key(num))]
+    if no_answers:
+        lines.append("\n⚠️ <b>Нет ответов в коде (проверка недоступна):</b> " + ", ".join(no_answers))
+
     text = "\n".join(lines)
     # Telegram ограничивает сообщение ~4096 символами — на всякий случай режем
     for chunk_start in range(0, len(text), 3500):
@@ -933,7 +923,7 @@ async def list_students(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text[chunk_start:chunk_start + 3500], parse_mode="HTML")
 
 
-# 👑 /revoke <id> — забрать доступ у ОДНОГО ученика, не трогая остальных (только для админа)
+# 👑 /revoke <id> — забрать доступ у ОДНОГО ученика (только для админа)
 async def revoke_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_admin(user_id):
@@ -997,8 +987,7 @@ async def broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Рассылка отправлена: {sent} получили, {failed} не удалось доставить.")
 
 
-# 👑 /grant <id> — вернуть доступ конкретному ID напрямую: снимает с чёрного списка
-# и сразу даёт доступ, без повторного ввода пароля (только для админа)
+# 👑 /grant <id> — вернуть доступ конкретному ID напрямую (только для админа)
 async def grant_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if not is_admin(user_id):
@@ -1038,7 +1027,7 @@ async def grant_student(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# 👑 Команды-подсказки только в личном чате с админом (у остальных виден только /start)
+# 👑 Команды-подсказки только в личном чате с админом
 async def post_init(application: Application):
     await application.bot.set_my_commands(
         [BotCommand("start", "Начать работу с ботом")],
